@@ -3,3 +3,5 @@ beautifulsoup4
 pandas
 requests-html
 lxml_html_clean
+playwright
+tweepy
