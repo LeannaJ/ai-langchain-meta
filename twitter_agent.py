@@ -1,70 +1,71 @@
 import os
-import requests
-import datetime
 import pandas as pd
-from bs4 import BeautifulSoup
+import datetime
+from playwright.sync_api import sync_playwright, TimeoutError
 
-def fetch_trends(region="united-states"):
+TOP_COUNTRIES = [
+    "united-states",
+    "india",
+    "brazil",
+    "united-kingdom",
+    "indonesia",
+    "mexico",
+    "philippines",
+    "canada",
+    "germany",
+    "japan"
+]
+
+def fetch_trends(region):
+    print(f"Beginning extraction for region: {region}")
     url = f"https://trends24.in/{region}/"
-    response = requests.get(url)
-    if response.status_code != 200:
-        raise Exception(f"Failed to fetch data from {url}")
-    
-    soup = BeautifulSoup(response.text, "html.parser")
-    region_header = soup.find("h1", class_="mt-1")
-    region_name = region_header.text.strip() if region_header else "Unknown Region"
 
-    trends_data = []
-    trend_cards = soup.select(".trend-card__list")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        print(f"[INFO] Fetching: {url}")
+        page.goto(url, timeout=60000)
 
-    for card in trend_cards:
-        for rank, item in enumerate(card.select("li"), 1):
-            trend_tag = item.find("a")
-            if not trend_tag:
+        try:
+            print("[INFO] Forcing 'Table' tab to load...")
+            page.evaluate("document.querySelector('#tab-link-table').click()")
+            page.wait_for_selector("section#table table", timeout=15000)
+        except TimeoutError:
+            print("[WARN] Table tab may already be active or not visible.")
+
+        rows = page.query_selector_all("section#table table tbody tr")
+        print(f"[DEBUG] Found {len(rows)} rows in table for {region}")
+
+        trends = []
+        for row in rows:
+            cols = row.query_selector_all("td")
+            if len(cols) < 2:
                 continue
 
-            trend_text = trend_tag.text.strip()
-            trend_link = trend_tag["href"].strip()
-            full_link = f"https://trends24.in{trend_link}"
+            def safe_text(col_idx):
+                return cols[col_idx].inner_text().strip() if col_idx < len(cols) else ""
 
-            # Find metadata span
-            meta_div = item.find("span", class_="tweet-count")
-            top_position = tweet_count = duration = ""
-
-            if meta_div:
-                meta_parts = [p.strip() for p in meta_div.text.split("•")]
-
-                if len(meta_parts) == 1:
-                    tweet_count = meta_parts[0]
-                elif len(meta_parts) == 2:
-                    tweet_count, duration = meta_parts
-                elif len(meta_parts) == 3:
-                    top_position, tweet_count, duration = meta_parts
-
-            trends_data.append({
-                "region": region_name,
-                "rank": rank,
-                "trend": trend_text,
-                "top_position": top_position,
-                "tweet_count": tweet_count,
-                "duration": duration,
-                "link": full_link,
+            trends.append({
+                "region": region,
+                "rank": safe_text(0),
+                "trend": safe_text(1),
+                "top_position": safe_text(2),
+                "tweet_count": safe_text(3),
+                "duration": safe_text(4),
                 "timestamp": datetime.datetime.utcnow().isoformat()
             })
 
-        if len(trends_data) >= 50:
-            break
+        browser.close()
+        return trends
 
-    return trends_data[:50]
-
-def save_to_csv(data, filename="trends_output.csv"):
-    df = pd.DataFrame(data)
+def save_to_csv(all_data, filename="trends_output.csv"):
+    df = pd.DataFrame(all_data)
     df.to_csv(filename, index=False)
+    print(f"[DONE] Saved {len(df)} total trends to {filename}" if len(df) else "No trends found\nCreated empty CSV file")
 
 if __name__ == "__main__":
-    try:
-        trends = fetch_trends()
-        save_to_csv(trends)
-        print(f"[DONE] Extracted and saved {len(trends)} trends to trends_output.csv")
-    except Exception as e:
-        print(f"[ERROR] {e}")
+    all_trends = []
+    for country in TOP_COUNTRIES:
+        trends = fetch_trends(country)
+        all_trends.extend(trends)
+    save_to_csv(all_trends)
