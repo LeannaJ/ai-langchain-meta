@@ -2,13 +2,12 @@ name: Run Twitter Agent
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # Every 6 hours
+    - cron: "0 */6 * * *"  # every 6 hours
   workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -19,14 +18,17 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run scraping script
         run: |
-          touch trends_output.csv  # ensure file exists
-          python twitter_agent.py
+          pip install -r requirements.txt
+          playwright install chromium  
 
-      - name: Upload CSV file
+      - name: Ensure CSV file exists
+        run: touch trends_output.csv
+
+      - name: Run Twitter Agent
+        run: python twitter_agent.py
+
+      - name: Upload CSV
         uses: actions/upload-artifact@v4
         with:
           name: trends-output
