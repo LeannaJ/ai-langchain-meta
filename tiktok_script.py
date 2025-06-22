@@ -8,7 +8,7 @@ import asyncio
 from playwright.async_api import async_playwright
 
 async def get_single_ms_token(playwright):
-    browser = await playwright.firefox.launch(headless=False, slow_mo=100)
+    browser = await playwright.firefox.launch(headless=True, slow_mo=100)
     context = await browser.new_context()
     page = await context.new_page()
 
