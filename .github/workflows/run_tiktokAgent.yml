@@ -23,14 +23,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r tiktok_requirements.txt
 
-      - name: Install required system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget gnupg ca-certificates
-          wget https://github.com/microsoft/playwright/raw/main/packages/playwright-core/src/server/dependencies.sh
-          chmod +x dependencies.sh
-          sudo ./dependencies.sh
-
+      - name: Install system dependencies for Playwright  
+        run: npx playwright install-deps
           
       - name: Install Playwright browsers 
         run: playwright install
