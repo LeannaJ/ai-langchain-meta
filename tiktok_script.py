@@ -64,7 +64,7 @@ async def main():
         ms_tokens = ms_token_list,
         num_sessions=len(ms_token_list),
         sleep_after=3,
-        browser="webkit",
+        browser="chromium",
         headless=True
     )
 
@@ -88,7 +88,6 @@ async def main():
         json.dump(all_data, f, indent=2)
     print(f"\n💾 Data saved to {output_file}")
 
-# 在 notebook 中直接使用 await 呼叫
 # Run everything
 if __name__ == "__main__":
     import asyncio
