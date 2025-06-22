@@ -60,7 +60,7 @@ output_file = "tiktok_trending1.json"
 async def main():
     all_data = []
     async with async_playwright() as pw:
-        async with TikTokApi() as api:
+        async with TikTokApi(playwright=pw, headless=True) as api:
             await api.create_sessions(
                 ms_tokens = ms_token_list,
                 num_sessions=len(ms_token_list),
