@@ -51,6 +51,7 @@ import nest_asyncio
 import asyncio
 import json
 from TikTokApi import TikTokApi
+from TikTokApi.stealth import StealthConfig
 
 nest_asyncio.apply()
 
@@ -60,13 +61,13 @@ output_file = "tiktok_trending1.json"
 async def main():
     all_data = []
     api = TikTokApi()
+    api.stealth_config = StealthConfig()
     await api.create_sessions(
         ms_tokens = ms_token_list,
         num_sessions=len(ms_token_list),
         sleep_after=3,
         browser="chromium",
-        headless=True,
-        stealth=True
+        headless=True
     )
 
     for i in range(len(ms_token_list)):
