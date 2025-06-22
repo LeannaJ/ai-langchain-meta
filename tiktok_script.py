@@ -65,7 +65,8 @@ async def main():
         num_sessions=len(ms_token_list),
         sleep_after=3,
         browser="chromium",
-        headless=True
+        headless=True,
+        stealth=True
     )
 
     for i in range(len(ms_token_list)):
