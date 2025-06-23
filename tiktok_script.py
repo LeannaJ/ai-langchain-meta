@@ -60,24 +60,24 @@ output_file = "tiktok_trending1.json"
 
 async def main():
     all_data = []
-    api = TikTokApi()
-    api.stealth_config = StealthConfig()
-    await api.create_sessions(
-        ms_tokens = ms_token_list,
-        num_sessions=len(ms_token_list),
-        sleep_after=3,
-        browser="chromium",
-        headless=True
-    )
-
-    for i in range(len(ms_token_list)):
-        print(f"📥 Scraping with token #{i+1}")
-        session = api.sessions[i]
-        count = 0
-        async for video in api.trending.videos(session=session, count=30):
-            all_data.append(video.as_dict)
-            count += 1
-        print(f"✅ Retrieved {count} videos from token #{i+1}")
+    
+    async with async_playwright() as pw:
+        async with TikTokApi(playwright=pw, headless=True) as api:
+            await api.create_sessions(
+                ms_tokens=ms_token_list,
+                num_sessions=len(ms_token_list),
+                sleep_after=3,
+                browser="chromium",
+                stealth=True  
+            )
+            for i in range(len(ms_token_list)):
+                print(f"📥 Scraping with token #{i+1}")
+                session = api.sessions[i]
+                count = 0
+                async for video in api.trending.videos(session=session, count=30):
+                    all_data.append(video.as_dict)
+                    count += 1
+                print(f"✅ Retrieved {count} videos from token #{i+1}")
 
 
     print(f"\n📊 Total videos collected: {len(all_data)}")
