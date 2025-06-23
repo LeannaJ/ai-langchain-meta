@@ -6,6 +6,9 @@
 
 import asyncio
 from playwright.async_api import async_playwright
+import json
+from pprint import pprint
+from datetime import datetime
 
 async def get_single_ms_token(playwright):
     browser = await playwright.firefox.launch(headless=True, slow_mo=100)
@@ -76,14 +79,48 @@ async def main():
                 async for video in api.trending.videos(session=session, count=30):
                     all_data.append(video.as_dict)
                     count += 1
-                print(f"✅ Retrieved {count} videos from token #{i+1}")
-
+                print(f"✅ Retrieved {count} videos from token #{i+1}") 
 
     print(f"\n📊 Total videos collected: {len(all_data)}")
+    unique_videos = {}
 
-    if all_data:
-        print("\n🔍 Sample video:")
-        print(json.dumps(all_data[0], indent=2))
+    for v in all_data:
+        video_id = v.get("id")
+        author_id = v.get("author", {}).get("uniqueId")
+    
+        if not video_id:
+            continue
+    
+        if video_id not in unique_videos:
+            unique_videos[video_id] = {
+                "video_id": video_id,
+                "author_id": author_id,
+                "video_url": f"https://www.tiktok.com/@{author_id}/video/{video_id}" if author_id else None,
+                "description": v.get("desc"),
+                "create_time": datetime.fromtimestamp(v.get("createTime")).isoformat() if v.get("createTime") else None,
+                "author_name": v.get("author", {}).get("nickname"),
+                "likes": v.get("stats", {}).get("diggCount"),
+                "views": v.get("stats", {}).get("playCount"),
+                "comments": v.get("stats", {}).get("commentCount"),
+                "shares": v.get("stats", {}).get("shareCount"),
+                "music_title": v.get("music", {}).get("title"),
+                "music_author_name": v.get("music", {}).get("authorName"),  # ✅ added this line
+                "video_duration": v.get("video", {}).get("duration"),
+                "cover_image": v.get("video", {}).get("cover"),
+                "hashtags": [tag.get("hashtagName") for tag in v.get("textExtra", []) if "hashtagName" in tag],
+                "challenges": [c.get("title") for c in v.get("challenges", []) if "title" in c]
+            }
+    # Final list
+    deduped_cleaned = list(unique_videos.values())
+    print("📦 Number of unique videos after deduplication:", len(deduped_cleaned))
+    
+    # Save the cleaned and deduplicated data
+    output_cleaned_file = "tiktok_trending_cleaned.json"
+    
+    with open(output_cleaned_file, "w", encoding="utf-8") as f:
+        json.dump(deduped_cleaned, f, ensure_ascii=False, indent=2)
+    
+    print(f"✅ Cleaned data saved to: {output_cleaned_file}")
 
 # Run everything
 if __name__ == "__main__":
@@ -95,72 +132,6 @@ if __name__ == "__main__":
         traceback.print_exc()
 
 
-# In[23]:
-
-
-import json
-from pprint import pprint
-
-videos = all_data 
-
-# Show results
-print("📦 Number of videos:", len(videos))
-
-if videos:
-    print("🔍 First video:")
-    pprint(videos[0], depth=3, width=100)
-else:
-    print("⚠️ No videos found.")
-
-
-# In[ ]:
-
-
-from datetime import datetime
-
-unique_videos = {}
-
-for v in videos:
-    video_id = v.get("id")
-    author_id = v.get("author", {}).get("uniqueId")
-
-    if not video_id:
-        continue
-
-    if video_id not in unique_videos:
-        unique_videos[video_id] = {
-            "video_id": video_id,
-            "author_id": author_id,
-            "video_url": f"https://www.tiktok.com/@{author_id}/video/{video_id}" if author_id else None,
-            "description": v.get("desc"),
-            "create_time": datetime.fromtimestamp(v.get("createTime")).isoformat() if v.get("createTime") else None,
-            "author_name": v.get("author", {}).get("nickname"),
-            "likes": v.get("stats", {}).get("diggCount"),
-            "views": v.get("stats", {}).get("playCount"),
-            "comments": v.get("stats", {}).get("commentCount"),
-            "shares": v.get("stats", {}).get("shareCount"),
-            "music_title": v.get("music", {}).get("title"),
-            "music_author_name": v.get("music", {}).get("authorName"),  # ✅ added this line
-            "video_duration": v.get("video", {}).get("duration"),
-            "cover_image": v.get("video", {}).get("cover"),
-            "hashtags": [tag.get("hashtagName") for tag in v.get("textExtra", []) if "hashtagName" in tag],
-            "challenges": [c.get("title") for c in v.get("challenges", []) if "title" in c]
-        }
-
-# Final list
-deduped_cleaned = list(unique_videos.values())
-print("📦 Number of unique videos after deduplication:", len(deduped_cleaned))
-
-
-# Save the cleaned and deduplicated data
-output_cleaned_file = "tiktok_trending_cleaned.json"
-
-with open(output_cleaned_file, "w", encoding="utf-8") as f:
-    json.dump(deduped_cleaned, f, ensure_ascii=False, indent=2)
-
-print(f"✅ Cleaned data saved to: {output_cleaned_file}")
-
-# In[ ]:
 
 
 
