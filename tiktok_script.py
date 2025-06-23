@@ -1,10 +1,12 @@
 import asyncio
 import nest_asyncio
 import json
+import os
 from datetime import datetime
 from pprint import pprint
 from playwright.async_api import async_playwright
 from TikTokApi import TikTokApi
+import psycopg2
 
 nest_asyncio.apply()
 
@@ -42,7 +44,7 @@ async def main():
     async with async_playwright() as pw:
         api = TikTokApi.get_instance(custom_verify_fp="", playwright=pw)
         for i, token in enumerate(ms_token_list):
-            print(f"\n📥 Scraping with token #{i+1}")
+            print(f"\n📅 Scraping with token #{i+1}")
             count = 0
             try:
                 videos = await api.trending(count=30, ms_token=token)
@@ -55,7 +57,6 @@ async def main():
 
     print(f"\n📊 Total videos collected: {len(all_data)}")
 
-    # Deduplicate and transform
     unique_videos = {}
     for v in all_data:
         video_id = v.get("id")
@@ -85,6 +86,58 @@ async def main():
 
     deduped_cleaned = list(unique_videos.values())
     print("📦 Number of unique videos after deduplication:", len(deduped_cleaned))
+
+    # Upload to PostgreSQL
+    db_config = {
+        "dbname": os.getenv("postgres"),
+        "user": os.getenv("postgres.qeqlcikxfougmgahwyit"),
+        "password": os.getenv("yFSxgm$Y3b@@F.G"),
+        "host": os.getenv("aws-0-us-east-2.pooler.supabase.com"),
+        "port": os.getenv("DB_PORT", "5432")
+    }
+
+    try:
+        conn = psycopg2.connect(**db_config)
+        cursor = conn.cursor()
+
+        insert_query = """
+        INSERT INTO tiktok_videos (
+            video_id, author_id, video_url, description, create_time,
+            author_name, likes, views, comments, shares,
+            music_title, music_author_name, video_duration,
+            cover_image, hashtags, challenges
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (video_id) DO NOTHING
+        """
+
+        for video in deduped_cleaned:
+            cursor.execute(insert_query, (
+                video.get("video_id"),
+                video.get("author_id"),
+                video.get("video_url"),
+                video.get("description"),
+                video.get("create_time"),
+                video.get("author_name"),
+                video.get("likes"),
+                video.get("views"),
+                video.get("comments"),
+                video.get("shares"),
+                video.get("music_title"),
+                video.get("music_author_name"),
+                video.get("video_duration"),
+                video.get("cover_image"),
+                video.get("hashtags"),
+                video.get("challenges")
+            ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("\u2705 All videos inserted into PostgreSQL database.")
+
+    except Exception as e:
+        print(f"\n🚨 DB Upload Error: {e}")
 
     output_file = "tiktok_trending_cleaned.json"
     with open(output_file, "w", encoding="utf-8") as f:
