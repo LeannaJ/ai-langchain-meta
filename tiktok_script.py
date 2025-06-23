@@ -105,7 +105,7 @@ if __name__ == "__main__":
 import json
 from pprint import pprint
 
-with open("/Users/hazel/Documents/Purdue/Advanced IP/Practice File/tiktok_trending1.json", "r") as f:
+with open("tiktok_trending1.json", "r") as f:
     videos = json.load(f)  # now the root is directly a list of videos
 
 # Show results
