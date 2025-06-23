@@ -92,8 +92,12 @@ async def main():
 
 # Run everything
 if __name__ == "__main__":
-    import asyncio
-    cleaned_videos = asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"\n🚨 Unhandled exception: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # In[23]:
