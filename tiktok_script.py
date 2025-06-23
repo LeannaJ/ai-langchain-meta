@@ -85,10 +85,6 @@ async def main():
         print("\n🔍 Sample video:")
         print(json.dumps(all_data[0], indent=2))
 
-    with open(output_file, "w") as f:
-        json.dump(all_data, f, indent=2)
-    print(f"\n💾 Data saved to {output_file}")
-
 # Run everything
 if __name__ == "__main__":
     try:
@@ -105,8 +101,7 @@ if __name__ == "__main__":
 import json
 from pprint import pprint
 
-with open("tiktok_trending1.json", "r") as f:
-    videos = json.load(f)  # now the root is directly a list of videos
+videos = all_data 
 
 # Show results
 print("📦 Number of videos:", len(videos))
