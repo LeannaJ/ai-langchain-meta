@@ -51,7 +51,6 @@ import nest_asyncio
 import asyncio
 import json
 from TikTokApi import TikTokApi
-from TikTokApi.stealth import StealthConfig
 
 nest_asyncio.apply()
 
