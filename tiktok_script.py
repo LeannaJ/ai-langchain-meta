@@ -45,7 +45,7 @@ async def main():
             ms_tokens=ms_token_list,
             num_sessions=len(ms_token_list),
             browser="chromium",
-            headless=True
+            headless=False
         )
 
         for i, session in enumerate(api.sessions):
