@@ -112,6 +112,7 @@ async def main():
         """
 
         for video in deduped_cleaned:
+            print(f"Inserting video_id: {video.get('video_id')}")
             cursor.execute(insert_query, (
                 video.get("video_id"),
                 video.get("author_id"),
