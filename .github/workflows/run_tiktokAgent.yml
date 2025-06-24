@@ -32,8 +32,8 @@ jobs:
       - name: Install system dependencies for Playwright  
         run: npx playwright install-deps
           
-      - name: Install Playwright browsers 
-        run: playwright install
+      - name: Install Playwright browsers with deps
+        run: playwright install --with-deps
 
       - name: Run the TikTok script
         run: python tiktok_script.py
