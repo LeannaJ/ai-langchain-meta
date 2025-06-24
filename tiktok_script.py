@@ -3,7 +3,6 @@ import nest_asyncio
 import json
 import os
 from datetime import datetime
-from pprint import pprint
 from playwright.async_api import async_playwright
 from TikTokApi import TikTokApi
 import psycopg2
@@ -41,19 +40,24 @@ async def main():
     ms_token_list = await collect_ms_tokens(6)
     all_data = []
 
-    async with async_playwright() as pw:
-        api = TikTokApi(playwright=pw)
-        for i, token in enumerate(ms_token_list):
-            print(f"\n📅 Scraping with token #{i+1}")
+    async with TikTokApi() as api:
+        await api.create_sessions(
+            ms_tokens=ms_token_list,
+            num_sessions=len(ms_token_list),
+            browser="webkit",
+            headless=True
+        )
+
+        for i, session in enumerate(api.sessions):
+            print(f"\n📅 Scraping with session #{i+1}")
             count = 0
             try:
-                videos = await api.trending(count=30, ms_token=token)
-                for video in videos:
+                async for video in api.trending.videos(session=session, count=30):
                     all_data.append(video.as_dict)
                     count += 1
-                print(f"✅ Retrieved {count} videos from token #{i+1}")
+                print(f"✅ Retrieved {count} videos from session #{i+1}")
             except Exception as e:
-                print(f"⚠️ Failed on token #{i+1}: {e}")
+                print(f"⚠️ Failed on session #{i+1}: {e}")
 
     print(f"\n📊 Total videos collected: {len(all_data)}")
 
@@ -80,8 +84,8 @@ async def main():
             "music_author_name": v.get("music", {}).get("authorName"),
             "video_duration": v.get("video", {}).get("duration"),
             "cover_image": v.get("video", {}).get("cover"),
-            "hashtags": [tag.get("hashtagName") for tag in v.get("textExtra", []) if "hashtagName" in tag],
-            "challenges": [c.get("title") for c in v.get("challenges", []) if "title" in c]
+            "hashtags": v.get("textExtra", []),
+            "challenges": v.get("challenges", [])
         }
 
     deduped_cleaned = list(unique_videos.values())
@@ -112,7 +116,6 @@ async def main():
         """
 
         for video in deduped_cleaned:
-            print(f"Inserting video_id: {video.get('video_id')}")
             cursor.execute(insert_query, (
                 video.get("video_id"),
                 video.get("author_id"),
@@ -128,14 +131,14 @@ async def main():
                 video.get("music_author_name"),
                 video.get("video_duration"),
                 video.get("cover_image"),
-                video.get("hashtags"),
-                video.get("challenges")
+                json.dumps([tag.get("hashtagName") for tag in video.get("hashtags", []) if "hashtagName" in tag]),
+                json.dumps([c.get("title") for c in video.get("challenges", []) if "title" in c])
             ))
 
         conn.commit()
         cursor.close()
         conn.close()
-        print("\u2705 All videos inserted into PostgreSQL database.")
+        print("✅ All videos inserted into PostgreSQL database.")
 
     except Exception as e:
         print(f"\n🚨 DB Upload Error: {e}")
