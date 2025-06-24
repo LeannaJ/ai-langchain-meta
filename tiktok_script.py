@@ -9,12 +9,24 @@ import psycopg2
 
 nest_asyncio.apply()
 
-async def get_single_ms_token(playwright):
-    browser = await playwright.chromium.launch(headless=True)
+# ✅ FREE PROXY LIST
+proxy_list = [
+    "http://51.158.123.35:8811",
+    "http://91.132.136.164:56062",
+    "http://134.209.29.120:3128",
+    "http://178.128.246.52:3128"
+    # 你可以從 https://free-proxy-list.net 找更多
+]
+
+async def get_single_ms_token(playwright, proxy=None):
+    browser = await playwright.chromium.launch(
+        headless=True,
+        proxy={"server": proxy} if proxy else None
+    )
     context = await browser.new_context()
     page = await context.new_page()
 
-    print("🌐 Opening TikTok...")
+    print(f"🌐 Opening TikTok with proxy: {proxy}")
     await page.goto("https://www.tiktok.com", timeout=60000)
     await page.wait_for_timeout(15000)
     cookies = await context.cookies()
@@ -27,8 +39,9 @@ async def collect_ms_tokens(n=6):
     tokens = []
     async with async_playwright() as p:
         for i in range(n):
-            print(f"\n🔁 Session {i+1}")
-            token = await get_single_ms_token(p)
+            proxy = proxy_list[i % len(proxy_list)]
+            print(f"\n🔁 Session {i+1} using proxy: {proxy}")
+            token = await get_single_ms_token(p, proxy=proxy)
             if token:
                 print(f"✅ Token #{i+1}: {token[:50]}...")
                 tokens.append(token)
@@ -91,7 +104,6 @@ async def main():
     deduped_cleaned = list(unique_videos.values())
     print("📦 Number of unique videos after deduplication:", len(deduped_cleaned))
 
-    # Upload to PostgreSQL
     db_config = {
         "dbname": os.getenv("DB_NAME"),
         "user": os.getenv("DB_USER"),
