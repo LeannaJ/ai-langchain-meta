@@ -89,10 +89,10 @@ async def main():
 
     # Upload to PostgreSQL
     db_config = {
-        "dbname": os.getenv("postgres"),
-        "user": os.getenv("postgres.qeqlcikxfougmgahwyit"),
-        "password": os.getenv("yFSxgm$Y3b@@F.G"),
-        "host": os.getenv("aws-0-us-east-2.pooler.supabase.com"),
+        "dbname": os.getenv("DB_NAME"),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "host": os.getenv("DB_HOST"),
         "port": os.getenv("DB_PORT", "5432")
     }
 
