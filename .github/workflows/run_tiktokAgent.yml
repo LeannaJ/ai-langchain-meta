@@ -8,6 +8,12 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-latest
+    env:
+      DB_NAME: ${{ postgres }}
+      DB_USER: ${{ postgres.qeqlcikxfougmgahwyit }}
+      DB_PASSWORD: ${{ yFSxgm$Y3b@@F.G }}
+      DB_HOST: ${{ aws-0-us-east-2.pooler.supabase.com }}
+      DB_PORT: 5432
 
     steps:
       - name: Checkout repository
