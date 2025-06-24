@@ -1,4 +1,4 @@
-name: run reddit agent
+name: Run Reddit Agent
 
 # grant write access so we can push back to the repo
 permissions:
