@@ -84,8 +84,8 @@ async def main():
             "music_author_name": v.get("music", {}).get("authorName"),
             "video_duration": v.get("video", {}).get("duration"),
             "cover_image": v.get("video", {}).get("cover"),
-            "hashtags": v.get("textExtra", []),
-            "challenges": v.get("challenges", [])
+            "hashtags": [tag.get("hashtagName") for tag in v.get("textExtra", []) if "hashtagName" in tag],
+            "challenges": [c.get("title") for c in v.get("challenges", []) if "title" in c]
         }
 
     deduped_cleaned = list(unique_videos.values())
@@ -131,8 +131,8 @@ async def main():
                 video.get("music_author_name"),
                 video.get("video_duration"),
                 video.get("cover_image"),
-                json.dumps([tag.get("hashtagName") for tag in video.get("hashtags", []) if "hashtagName" in tag]),
-                json.dumps([c.get("title") for c in video.get("challenges", []) if "title" in c])
+                json.dumps(video.get("hashtags")),
+                json.dumps(video.get("challenges"))
             ))
 
         conn.commit()
