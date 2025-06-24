@@ -10,7 +10,7 @@ import psycopg2
 nest_asyncio.apply()
 
 async def get_single_ms_token(playwright):
-    browser = await playwright.firefox.launch(headless=True, slow_mo=100)
+    browser = await playwright.chromium.launch(headless=True)
     context = await browser.new_context()
     page = await context.new_page()
 
@@ -44,7 +44,7 @@ async def main():
         await api.create_sessions(
             ms_tokens=ms_token_list,
             num_sessions=len(ms_token_list),
-            browser="webkit",
+            browser="chromium",
             headless=True
         )
 
