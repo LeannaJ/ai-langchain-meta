@@ -1,0 +1,66 @@
+"""
+trend_bot.py
+Pulls the latest Spread × Intensity Top-25 list from Google Trends
+and writes it to trend_log.md.
+"""
+
+import datetime as dt
+from google.cloud import bigquery
+from dotenv import load_dotenv
+import pandas as pd
+
+load_dotenv()          # reads .env for credentials
+client = bigquery.Client()
+
+SQL = """
+-- get latest partition date
+DECLARE latest DATE DEFAULT (
+  SELECT PARSE_DATE('%Y%m%d', MAX(partition_id))
+  FROM   `bigquery-public-data.google_trends.INFORMATION_SCHEMA.PARTITIONS`
+  WHERE  table_name='top_rising_terms' AND partition_id<>'__NULL__'
+);
+
+WITH raw AS (
+  SELECT term, dma_id, percent_gain, score, week
+  FROM   `bigquery-public-data.google_trends.top_rising_terms`
+  WHERE  refresh_date = latest
+    AND  percent_gain >= 300
+    AND  score        >= 20
+),
+dedup AS (
+  SELECT *
+  FROM (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY term, dma_id ORDER BY week DESC) AS rn
+    FROM raw
+  )
+  WHERE rn = 1
+),
+stats AS (
+  SELECT
+    term,
+    COUNT(DISTINCT dma_id) AS dma_hits,
+    APPROX_QUANTILES(percent_gain,2)[OFFSET(1)] AS median_gain
+  FROM dedup
+  GROUP BY term
+)
+SELECT
+  term,
+  dma_hits,
+  dma_hits / 210.0 AS coverage_ratio,
+  median_gain,
+  (dma_hits / 210.0) * median_gain AS spread_intensity_score
+FROM stats
+ORDER BY spread_intensity_score DESC
+LIMIT 25;
+"""
+
+results = client.query(SQL).result().to_dataframe()
+today = dt.date.today()
+
+# Write / append to markdown log
+logfile = "trend_log.md"
+with open(logfile, "a", encoding="utf-8") as f:
+    f.write(f"## {today}\n\n")
+    f.write(results.to_markdown(index=False))
+    f.write("\n\n")
+print("Trend log updated:", logfile)
