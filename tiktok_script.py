@@ -42,7 +42,7 @@ async def main():
     all_data = []
 
     async with async_playwright() as pw:
-        api = TikTokApi.get_instance(custom_verify_fp="", playwright=pw)
+        api = TikTokApi(playwright=pw)
         for i, token in enumerate(ms_token_list):
             print(f"\n📅 Scraping with token #{i+1}")
             count = 0
