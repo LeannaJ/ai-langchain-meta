@@ -2,8 +2,8 @@ name: Daily Google-Trends Bot
 
 on:
   schedule:
-    - cron:  '0 2 * * *'      # 02:00 UTC daily
-  workflow_dispatch:           # manual trigger
+    - cron: '0 12 * * *'      # 12:00 UTC daily
+  workflow_dispatch:          # manual trigger
 
 jobs:
   run-bot:
@@ -27,14 +27,20 @@ jobs:
         echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
 
     - name: Run trend bot
-      run: python trend_bot.py
-
-    - name: Commit updated log
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
-        git config --global user.name  "github-actions[bot]"
-        git config --global user.email "bot@users.noreply.github.com"
-        git add trend_log.md
-        git commit -m "nightly update" || echo "No changes"
-        git push
+        python trend_bot.py
+
+    - name: List generated CSV
+      run: |
+        ls -lh trend_output_*.csv
+
+    - name: Show CSV content in logs
+      run: |
+        echo "==== Trend Bot CSV Output ===="
+        cat trend_output_*.csv
+
+    - name: Upload CSV as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: trend-bot-output
+        path: trend_output_*.csv
