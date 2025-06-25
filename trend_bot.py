@@ -1,7 +1,7 @@
 """
 trend_bot.py
 Pulls the latest Spread × Intensity Top-25 list from Google Trends
-and writes it to trend_log.md.
+and writes it to a CSV file.
 """
 
 import datetime as dt
@@ -57,10 +57,7 @@ LIMIT 25;
 results = client.query(SQL).result().to_dataframe()
 today = dt.date.today()
 
-# Write / append to markdown log
-logfile = "trend_log.md"
-with open(logfile, "a", encoding="utf-8") as f:
-    f.write(f"## {today}\n\n")
-    f.write(results.to_markdown(index=False))
-    f.write("\n\n")
-print("Trend log updated:", logfile)
+# Write to CSV
+csv_file = f"trend_output_{today}.csv"
+results.to_csv(csv_file, index=False)
+print(f"Trend CSV generated: {csv_file}")
