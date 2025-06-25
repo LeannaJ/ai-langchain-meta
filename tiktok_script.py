@@ -6,8 +6,10 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from TikTokApi import TikTokApi
 import psycopg2
+from dotenv import load_dotenv
 
 nest_asyncio.apply()
+load_dotenv()
 
 # ✅ FREE PROXY LIST (Webshare)
 proxy_list = [
@@ -15,8 +17,11 @@ proxy_list = [
     {"ip": "207.244.217.165", "port": 6712},
     {"ip": "107.172.163.27", "port": 6543},
     {"ip": "23.94.138.75", "port": 6349},
-    {"ip": "216.10.27.159", "port": 6837}
+    {"ip": "216.155.158.159", "port": 6837}
 ]
+
+# ✅ COMMON DESKTOP USER AGENT
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 async def get_single_ms_token(playwright, proxy=None):
     ip = proxy["ip"]
@@ -36,10 +41,12 @@ async def get_single_ms_token(playwright, proxy=None):
             headless=True,
             proxy=proxy_config
         )
-        context = await browser.new_context()
+        context = await browser.new_context(
+            user_agent=USER_AGENT
+        )
         page = await context.new_page()
 
-        await page.goto("https://www.tiktok.com", timeout=120000)
+        await page.goto("https://www.tiktok.com", timeout=60000)
         await page.wait_for_timeout(15000)
         cookies = await context.cookies()
         await browser.close()
