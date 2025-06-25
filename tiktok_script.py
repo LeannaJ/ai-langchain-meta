@@ -6,10 +6,8 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from TikTokApi import TikTokApi
 import psycopg2
-from dotenv import load_dotenv
 
 nest_asyncio.apply()
-load_dotenv()
 
 # ✅ FREE PROXY LIST (Webshare)
 proxy_list = [
