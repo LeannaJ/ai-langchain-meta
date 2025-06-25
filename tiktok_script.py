@@ -6,32 +6,41 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from TikTokApi import TikTokApi
 import psycopg2
+from dotenv import load_dotenv
 
 nest_asyncio.apply()
+load_dotenv()
 
-# ✅ PROXY LIST
+# ✅ FREE PROXY LIST (Webshare)
 proxy_list = [
     {"ip": "198.23.239.134", "port": 6540},
     {"ip": "207.244.217.165", "port": 6712},
     {"ip": "107.172.163.27", "port": 6543},
     {"ip": "23.94.138.75", "port": 6349},
-    {"ip": "216.155.158.159", "port": 6837}
+    {"ip": "216.10.27.159", "port": 6837}
 ]
 
 async def get_single_ms_token(playwright, proxy=None):
+    ip = proxy["ip"]
+    port = proxy["port"]
+    username = os.getenv("PROXY_USER")
+    password = os.getenv("PROXY_PASS")
+
+    proxy_config = {
+        "server": f"http://{ip}:{port}",
+        "username": username,
+        "password": password
+    }
+
+    print(f"🌐 Opening TikTok with proxy: ***{ip}:{port}")
     try:
         browser = await playwright.chromium.launch(
             headless=True,
-            proxy={
-                "server": f"http://{proxy['ip']}:{proxy['port']}",
-                "username": os.getenv("PROXY_USER"),
-                "password": os.getenv("PROXY_PASS")
-            } if proxy else None
+            proxy=proxy_config
         )
         context = await browser.new_context()
         page = await context.new_page()
 
-        print(f"🌐 Opening TikTok with proxy: ***{proxy['ip']}:{proxy['port']}")
         await page.goto("https://www.tiktok.com", timeout=60000)
         await page.wait_for_timeout(15000)
         cookies = await context.cookies()
@@ -39,9 +48,8 @@ async def get_single_ms_token(playwright, proxy=None):
 
         ms_tokens = [c["value"] for c in cookies if c["name"] == "msToken"]
         return ms_tokens[-1] if ms_tokens else None
-
     except Exception as e:
-        print(f"❌ Proxy failed: ***{proxy['ip']}:{proxy['port']} → {e}")
+        print(f"❌ Proxy failed: ***{ip}:{port} → {e}")
         return None
 
 async def collect_ms_tokens(n=6):
