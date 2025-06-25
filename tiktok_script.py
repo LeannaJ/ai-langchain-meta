@@ -9,34 +9,29 @@ import psycopg2
 
 nest_asyncio.apply()
 
-# ✅ 帶驗證的 Proxy List（帳號密碼）
-proxy_auth_list = [
+# ✅ PROXY LIST
+proxy_list = [
     {"ip": "198.23.239.134", "port": 6540},
     {"ip": "207.244.217.165", "port": 6712},
     {"ip": "107.172.163.27", "port": 6543},
     {"ip": "23.94.138.75", "port": 6349},
-    {"ip": "216.155.158.159", "port": 6837},
+    {"ip": "216.155.158.159", "port": 6837}
 ]
 
-proxy_username = "nuqezlxh"
-proxy_password = "7ttdt3buwe0p"
-
-async def get_single_ms_token(playwright, proxy_info=None):
-    proxy_url = None
-    if proxy_info:
-        ip = proxy_info["ip"]
-        port = proxy_info["port"]
-        proxy_url = f"http://{proxy_username}:{proxy_password}@{ip}:{port}"
-
-    print(f"🌐 Opening TikTok with proxy: {proxy_url}")
-
+async def get_single_ms_token(playwright, proxy=None):
     try:
         browser = await playwright.chromium.launch(
             headless=True,
-            proxy={"server": proxy_url} if proxy_url else None
+            proxy={
+                "server": f"http://{proxy['ip']}:{proxy['port']}",
+                "username": os.getenv("PROXY_USER"),
+                "password": os.getenv("PROXY_PASS")
+            } if proxy else None
         )
         context = await browser.new_context()
         page = await context.new_page()
+
+        print(f"🌐 Opening TikTok with proxy: ***{proxy['ip']}:{proxy['port']}")
         await page.goto("https://www.tiktok.com", timeout=60000)
         await page.wait_for_timeout(15000)
         cookies = await context.cookies()
@@ -44,17 +39,18 @@ async def get_single_ms_token(playwright, proxy_info=None):
 
         ms_tokens = [c["value"] for c in cookies if c["name"] == "msToken"]
         return ms_tokens[-1] if ms_tokens else None
+
     except Exception as e:
-        print(f"❌ Proxy failed: {proxy_url} → {e}")
+        print(f"❌ Proxy failed: ***{proxy['ip']}:{proxy['port']} → {e}")
         return None
 
 async def collect_ms_tokens(n=6):
     tokens = []
     async with async_playwright() as p:
         for i in range(n):
-            proxy_info = proxy_auth_list[i % len(proxy_auth_list)]
-            print(f"\n🔁 Session {i+1} using proxy: {proxy_info}")
-            token = await get_single_ms_token(p, proxy_info=proxy_info)
+            proxy = proxy_list[i % len(proxy_list)]
+            print(f"\n🔁 Session {i+1} using proxy: {proxy}")
+            token = await get_single_ms_token(p, proxy=proxy)
             if token:
                 print(f"✅ Token #{i+1}: {token[:50]}...")
                 tokens.append(token)
