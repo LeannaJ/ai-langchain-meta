@@ -39,7 +39,7 @@ async def get_single_ms_token(playwright, proxy=None):
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto("https://www.tiktok.com", timeout=60000)
+        await page.goto("https://www.tiktok.com", timeout=120000)
         await page.wait_for_timeout(15000)
         cookies = await context.cookies()
         await browser.close()
