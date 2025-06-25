@@ -1,4 +1,4 @@
-name: Daily Google-Trends Bot
+name: Run Google Trends Agent
 
 on:
   schedule:
