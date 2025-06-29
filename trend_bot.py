@@ -24,8 +24,6 @@ WITH raw AS (
   SELECT term, dma_id, percent_gain, score, week
   FROM   `bigquery-public-data.google_trends.top_rising_terms`
   WHERE  refresh_date = latest
-    AND  percent_gain >= 300
-    AND  score        >= 20
 ),
 dedup AS (
   SELECT *
