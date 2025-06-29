@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 WINDOW_DAYS      = 7     # how many latest partitions (days) to scan
-MIN_PERCENT_GAIN = 300   # set to 0 to disable threshold
-MIN_SCORE        = 20    # set to 0 to disable threshold
+MIN_PERCENT_GAIN = 0   # set to 0 to disable threshold
+MIN_SCORE        = 0   # set to 0 to disable threshold
 CSV_PREFIX       = "trend_output_"  # file name will be <prefix><date>.csv
 # ──────────────────────────────────────────────────────────────────────────────
 
