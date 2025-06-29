@@ -51,7 +51,7 @@ SELECT
   (dma_hits / 210.0) * median_gain AS spread_intensity_score
 FROM stats
 ORDER BY spread_intensity_score DESC
-LIMIT 25;
+LIMIT 200;
 """
 
 results = client.query(SQL).result().to_dataframe()
