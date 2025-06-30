@@ -2,7 +2,7 @@ name: Run TikTok LLM Script Every 6 Hours
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 jobs:
@@ -23,17 +23,12 @@ jobs:
           pip install --upgrade pip
           pip install -r tiktok_llm_requirements.txt
 
-      - name: Install Chrome for Selenium
-        run: |
-          sudo apt update
-          sudo apt install -y wget curl unzip
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install -y ./google-chrome-stable_current_amd64.deb
-          google-chrome --version
+      - name: Install Playwright browsers
+        run: python -m playwright install
 
       - name: Run TikTok Script
         env:
           GEMINI_API_KEY: "AIzaSyA-mjFzthre_maHmacY51JK4TXF0tJ0evQ"
         run: |
           set -eux
-          python "TikTok Script with LLM support.py"
+          python "TikTok_Script_with_Playwright.py"
