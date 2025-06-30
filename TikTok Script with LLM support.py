@@ -145,6 +145,7 @@ async def scrape_hashtag(tag, max_videos=10):
         context = await browser.new_context()
         page = await context.new_page()
         try:
+            print(f"🔍 Visiting: {url}")
             await page.goto(url, timeout=60000)
             await page.wait_for_timeout(5000)
             videos = await page.locator("div[data-e2e='search-video-item']").all()
@@ -153,9 +154,9 @@ async def scrape_hashtag(tag, max_videos=10):
                     href = await video.locator("a").get_attribute("href")
                     desc = await video.locator("a").text_content()
                     results.append({"url": href, "description": desc})
-                except:
-                    continue
+                except Exception as ve:
+                    print(f"⚠️ Failed to parse one video: {ve}")
         except Exception as e:
-            print(f"Error scraping #{tag}: {e}")
+            print(f"❌ Error during Playwright scraping for #{tag}: {e}")
         await browser.close()
     return results
