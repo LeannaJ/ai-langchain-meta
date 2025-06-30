@@ -2,8 +2,8 @@ name: Run TikTok LLM Script Every 6 Hours
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # Every 6 hours
-  workflow_dispatch:        # Allow manual triggering
+    - cron: "0 */6 * * *"  
+  workflow_dispatch:        
 
 jobs:
   run-script:
@@ -24,5 +24,7 @@ jobs:
           pip install -r tiktok_llm_requirements.txt
 
       - name: Run TikTok Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python "TikTok Script with LLM support.py"
