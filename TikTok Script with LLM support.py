@@ -134,7 +134,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"❌ Error scraping #{tag}: {e}")  # You can raise to 1000 later
 
-    output_path = r"C:\Users\arman\OneDrive\Documents\PURDUE\SUMMER\META IP\tiktok_combined_llm_enriched.json"
+    output_path = "output_path = "tiktok_combined_llm_enriched.json"
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2)
 
