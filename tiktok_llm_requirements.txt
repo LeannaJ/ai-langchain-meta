@@ -1,4 +1,3 @@
 google-generativeai
-undetected-chromedriver
-selenium
+playwright
 python-dotenv
