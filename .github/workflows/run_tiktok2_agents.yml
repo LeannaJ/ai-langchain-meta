@@ -31,4 +31,4 @@ jobs:
           GEMINI_API_KEY: "AIzaSyA-mjFzthre_maHmacY51JK4TXF0tJ0evQ"
         run: |
           set -eux
-          python "TikTok_Script_with_Playwright.py"
+          python "TikTok Script with LLM support.py"
