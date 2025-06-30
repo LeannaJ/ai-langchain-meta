@@ -2,8 +2,8 @@ name: Run TikTok LLM Script Every 6 Hours
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  
-  workflow_dispatch:        
+    - cron: "0 */6 * * *"  # 每 6 小時執行一次（UTC）
+  workflow_dispatch:        # 也允許手動執行
 
 jobs:
   run-script:
@@ -25,6 +25,6 @@ jobs:
 
       - name: Run TikTok Script
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: "AIzaSyA-mjFzthre_maHmacY51JK4TXF0tJ0evQ"
         run: |
           python "TikTok Script with LLM support.py"
