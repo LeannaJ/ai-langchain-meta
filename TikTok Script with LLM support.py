@@ -5,12 +5,11 @@ from datetime import datetime
 from dotenv import load_dotenv
 import google.generativeai as genai
 from google.generativeai.types.safety_types import HarmCategory, HarmBlockThreshold
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import asyncio
+from playwright.async_api import async_playwright
 
 # === Load API Key ===
+load_dotenv(dotenv_path=r"C:\\Users\\arman\\OneDrive\\Documents\\PURDUE\\SUMMER\\META IP\\.env")
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("❌ GEMINI_API_KEY not found in .env!")
@@ -128,15 +127,34 @@ if __name__ == "__main__":
 
     all_results = []
     for tag in hashtags:
-        print(f"\n🔍 Scraping TikTok for #{tag}...")
-        try:
-            all_results.extend(scrape_hashtag(tag, max_videos=10))
-        except Exception as e:
-            print(f"❌ Error scraping #{tag}: {e}")  # You can raise to 1000 later
+        all_results.extend(scrape_hashtag(tag, max_videos=10))  # You can raise to 1000 later
 
-    output_path = "tiktok_combined_llm_enriched.json"
+    output_path = r"C:\Users\arman\OneDrive\Documents\PURDUE\SUMMER\META IP\tiktok_combined_llm_enriched.json"
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2)
 
     print(f"\n📆 Scraping complete. Total videos: {len(all_results)}")
     print(f"📦 Data saved to: {output_path}")
+
+async def scrape_hashtag(tag, max_videos=10):
+    results = []
+    url = f"https://www.tiktok.com/tag/{tag}"
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+        try:
+            await page.goto(url, timeout=60000)
+            await page.wait_for_timeout(5000)
+            videos = await page.locator("div[data-e2e='search-video-item']").all()
+            for video in videos[:max_videos]:
+                try:
+                    href = await video.locator("a").get_attribute("href")
+                    desc = await video.locator("a").text_content()
+                    results.append({"url": href, "description": desc})
+                except:
+                    continue
+        except Exception as e:
+            print(f"Error scraping #{tag}: {e}")
+        await browser.close()
+    return results
