@@ -11,7 +11,6 @@ from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # === Load API Key ===
-load_dotenv(dotenv_path=r"C:\\Users\\arman\\OneDrive\\Documents\\PURDUE\\SUMMER\\META IP\\.env")
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("❌ GEMINI_API_KEY not found in .env!")
@@ -129,7 +128,11 @@ if __name__ == "__main__":
 
     all_results = []
     for tag in hashtags:
-        all_results.extend(scrape_hashtag(tag, max_videos=10))  # You can raise to 1000 later
+        print(f"\n🔍 Scraping TikTok for #{tag}...")
+        try:
+            all_results.extend(scrape_hashtag(tag, max_videos=10))
+        except Exception as e:
+            print(f"❌ Error scraping #{tag}: {e}")  # You can raise to 1000 later
 
     output_path = r"C:\Users\arman\OneDrive\Documents\PURDUE\SUMMER\META IP\tiktok_combined_llm_enriched.json"
     with open(output_path, "w", encoding="utf-8") as f:
