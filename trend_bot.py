@@ -1,158 +1,133 @@
 #!/usr/bin/env python3
 """
-trend_bot.py  –  pulls two Google-Trends exports every day
+trend_bot.py -- pulls  ❑ Top-200 US *rising* terms
+                  and  ❑ Top-200 US *top* terms
+over the latest N partitions (default 7 days) of Google-Trends BigQuery
+and writes two CSVs with the EXACT columns below.
 
-• trend_rising_YYYY-MM-DD.csv   (top_rising_terms, ≤200 rows)
-• trend_top_YYYY-MM-DD.csv      (top_terms,        ≤200 rows)
-
-Both CSVs have the same four quantitative columns so downstream
-ranking / embedding code can treat them identically.
+Outputs
+-------
+trend_rising_YYYY-MM-DD.csv   ( 200 rows, 5 columns )
+trend_top_YYYY-MM-DD.csv      ( 200 rows, 4 columns )
 """
-
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import datetime as dt
 import pandas as pd
 from google.cloud import bigquery
 from dotenv import load_dotenv
-
+# ━━━━━━━━━━━━━━━━━━━  CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WINDOW_DAYS   = 7          # look back this many partitions (days)
+MIN_SCORE_GAIN = 0         # set >0 to filter low-quality rows in rising table
+CSV_PREFIX     = "trend"   # base file name
+# ━━━━━━━━━━━━━━━━━━━  INIT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 load_dotenv()                       # picks up GOOGLE_APPLICATION_CREDENTIALS
 client = bigquery.Client()
-
-# ────────────────────────────── CONFIG ──────────────────────────────
-WINDOW_DAYS     = 7                 # how many latest partitions (days) to scan
-MIN_SCORE_GAIN  = 0                 # set >0 to filter very low-quality rows
-CSV_PREFIX      = "trend"           # base name of output CSVs
-DMA_DENOM       = 210.0             # number of US DMAs, for coverage_ratio
-# ────────────────────────────────────────────────────────────────────
-
-
-# ───────────────────────────── helpers ──────────────────────────────
-def get_recent_partitions(n_days: int) -> list[str]:
-    """
-    Return a *list* of partition dates (YYYY-MM-DD) – newest first – that are
-    visible in *top_rising_terms*.  We use that to probe both tables.
-    """
+# ━━━━━━━━━━━━━━━━━━━  HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def get_recent_partitions(n: int) -> list[str]:
+    """Return the most-recent N partition YYYY-MM-DD strings in *top_rising_terms*."""
     sql = """
     SELECT PARSE_DATE('%Y%m%d', partition_id) AS dt
     FROM  `bigquery-public-data.google_trends.INFORMATION_SCHEMA.PARTITIONS`
     WHERE table_name='top_rising_terms'
-      AND partition_id!='__NULL__'
-    ORDER BY dt  DESC
-    LIMIT  @N
+      AND partition_id<>'__NULL__'
+    ORDER BY dt DESC
+    LIMIT @n
     """
     job = client.query(
         sql,
         job_config=bigquery.QueryJobConfig(
-            query_parameters=[bigquery.ScalarQueryParameter("N", "INT64", n_days)]
+            query_parameters=[bigquery.ScalarQueryParameter("n", "INT64", n)]
         ),
     )
-    return [row["dt"] for row in job.result()]
+    return [row["dt"].strftime("%Y-%m-%d") for row in job.result()]
 
-
-PARTITIONS  = get_recent_partitions(WINDOW_DAYS)  # list of DATEs
-LATEST      = PARTITIONS[0]                       # newest – used in filenames
-
-
-def build_query(table_name: str) -> str:
-    """
-    Return SQL (NO parameters) for *either* table.  We keep the select-list
-    identical (term, dma_hits, coverage_ratio, total_score, avg_rank) so that
-    both CSVs line up.
-    """
-    metric_col = "percent_gain" if "rising" in table_name else "score"
-
-    ###############
-    # 1) raw rows #
-    ###############
-    base_select = f"""
-    SELECT
-        term,
-        dma_id,
-        {metric_col}               AS metric,
-        rank,
-        refresh_date
-    FROM `bigquery-public-data.google_trends.{table_name}`
-    WHERE refresh_date IN ({','.join([f"'{d}'" for d in PARTITIONS])})
-      AND {metric_col} >= {MIN_SCORE_GAIN}
-    """
-
-    ############################################################################
-    # rising-specific branch: keep *strongest DMA* per term/date, then         #
-    # aggregate across WINDOW and compute spread_intensity_score exactly as   #
-    # before (this path is almost unchanged from your working version).        #
-    ############################################################################
-    if "rising" in table_name:
-        return f"""
-        WITH raw AS ({base_select}),
-
-        /* keep strongest DMA on each refresh_date for every term */
-        dedup AS (
-          SELECT *
-          FROM (
-            SELECT *,
-                   ROW_NUMBER() OVER (PARTITION BY term, refresh_date
-                                      ORDER BY metric DESC) rk
-            FROM raw)
-          WHERE rk = 1
-        ),
-
-        /* aggregate across the WINDOW and rank by spread_intensity_score */
-        stats AS (
-          SELECT
-             term,
-             COUNT(DISTINCT dma_id)                       AS dma_hits,
-             APPROX_QUANTILES(metric,2)[OFFSET(1)]        AS median_score
-          FROM dedup
-          GROUP BY term
-        )
-        SELECT
-           term,
-           dma_hits,
-           dma_hits/{DMA_DENOM}                          AS coverage_ratio,
-           median_score                                  AS total_score,
-           0                                             AS avg_rank,          -- filler
-           (dma_hits/{DMA_DENOM})*median_score           AS spread_intensity_score
-        FROM stats
-        ORDER BY spread_intensity_score DESC
-        LIMIT 200
-        """
-
-    ###########################################################################
-    # top-terms branch: MUCH simpler – just aggregate strongest score + rank  #
-    # for every term over the WINDOW                                          #
-    ###########################################################################
+PARTITIONS = get_recent_partitions(WINDOW_DAYS)
+LATEST     = PARTITIONS[0]            # newest date, used in filenames
+PARTITION_LIST = ",".join(f"'{d}'" for d in PARTITIONS)
+# ━━━━━━━━━━━━━━━━━━━  SQL BUILDERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def sql_rising() -> str:
+    """Top-200 rising terms across WINDOW with requested metrics."""
     return f"""
-    WITH raw AS ({base_select}),
-
-    stats AS (
+    WITH raw AS (
+      SELECT term,
+             dma_id,
+             percent_gain AS metric,
+             refresh_date
+      FROM `bigquery-public-data.google_trends.top_rising_terms`
+      WHERE refresh_date IN ({PARTITION_LIST})
+        AND percent_gain >= {MIN_SCORE_GAIN}
+    ),
+    dedup AS (            -- keep strongest dma per term/date
+      SELECT * EXCEPT(rk) FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY term, refresh_date
+                                     ORDER BY metric DESC) rk
+        FROM raw)
+      WHERE rk = 1
+    ),
+    stats AS (            -- aggregate across WINDOW
       SELECT
-         term,
-         COUNT(DISTINCT dma_id)     AS dma_hits,
-         SUM(metric)                AS total_score,     -- 0–2000 approx
-         AVG(rank)                  AS avg_rank
-      FROM raw
+        term,
+        COUNT(DISTINCT dma_id)                  AS dma_hits,
+        COUNT(DISTINCT dma_id)/210.0            AS coverage_ratio,
+        APPROX_QUANTILES(metric, 2)[OFFSET(1)]  AS median_gain,
+        (COUNT(DISTINCT dma_id)/210.0) *
+        APPROX_QUANTILES(metric, 2)[OFFSET(1)]  AS spread_intensity_score
+      FROM dedup
       GROUP BY term
     )
-    SELECT
-       term,
-       dma_hits,
-       dma_hits/{DMA_DENOM}         AS coverage_ratio,
-       total_score,
-       avg_rank,
-       total_score                  AS spread_intensity_score   -- keep column name stable
+    SELECT *
+    FROM stats
+    ORDER BY spread_intensity_score DESC
+    LIMIT 200
+    """
+
+def sql_top() -> str:
+    """Top-200 *top_terms* windowed metrics -- strongest score, plus avg-rank."""
+    return f"""
+    WITH raw AS (
+      SELECT term,
+             dma_id,
+             score            AS metric,
+             rank,
+             refresh_date
+      FROM `bigquery-public-data.google_trends.top_terms`
+      WHERE refresh_date IN ({PARTITION_LIST})
+    ),
+    best_per_dma AS (      -- keep strongest score per term/dma/date
+      SELECT * EXCEPT(rk) FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY term, dma_id, refresh_date
+                                     ORDER BY metric DESC) rk
+        FROM raw)
+      WHERE rk = 1
+    ),
+    best_across_win AS (   -- take strongest score across WINDOW for each term/dma
+      SELECT * EXCEPT(rk) FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY term, dma_id
+                                     ORDER BY metric DESC) rk
+        FROM best_per_dma)
+      WHERE rk = 1
+    ),
+    stats AS (
+      SELECT
+        term,
+        COUNT(DISTINCT dma_id)        AS dma_hits,
+        AVG(rank)                     AS avg_rank,
+        MAX(metric)                   AS total_score
+      FROM best_across_win
+      GROUP BY term
+    )
+    SELECT *
     FROM stats
     ORDER BY total_score DESC
     LIMIT 200
     """
-
-
+# ━━━━━━━━━━━━━━━━━━━  EXPORT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def export(csv_prefix: str, sql: str) -> None:
-    df     = client.query(sql).result().to_dataframe()
-    fname  = f"{csv_prefix}{LATEST}.csv"
+    df = client.query(sql).result().to_dataframe()
+    fname = f"{csv_prefix}_{LATEST}.csv"
     df.to_csv(fname, index=False)
-    print(f"[✓] {fname} written   (rows: {len(df)})")
-
-
-# ─────────────────────────────── main ───────────────────────────────
+    print(f"[✓] {fname} written  (rows: {len(df)})")
+# ━━━━━━━━━━━━━━━━━━━  MAIN  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == "__main__":
-    export(f"{CSV_PREFIX}_rising_", build_query("top_rising_terms"))
-    export(f"{CSV_PREFIX}_top_"   , build_query("top_terms"))
+    export(f"{CSV_PREFIX}_rising", sql_rising())
+    export(f"{CSV_PREFIX}_top",    sql_top())
