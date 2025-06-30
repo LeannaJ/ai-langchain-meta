@@ -1,13 +1,8 @@
+#!/usr/bin/env python3
 """
-trend_bot.py (v2)  –  pulls the **Top-200 U.S. rising Google-Trends topics**
-
-How it works
-------------
-1. Looks at the most-recent *WINDOW* BigQuery partitions (days).
-2. Optionally filters by percent_gain / score thresholds.
-3. Deduplicates per -- term × DMA (keeps latest week).
-4. Ranks by “spread × intensity” and returns the 200 strongest terms.
-5. Saves a CSV named `trend_output_<YYYY-MM-DD>.csv`.
+trend_bot.py – pulls two Google-Trends exports every day
+  • trend_rising_<date>.csv  (top_rising_terms, 200 rows max)
+  • trend_top_<date>.csv     (top_terms,         200 rows max)
 """
 
 import datetime as dt
@@ -15,80 +10,82 @@ import pandas as pd
 from google.cloud import bigquery
 from dotenv import load_dotenv
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-WINDOW_DAYS      = 7     # how many latest partitions (days) to scan
-MIN_PERCENT_GAIN = 0   # set to 0 to disable threshold
-MIN_SCORE        = 0    # set to 0 to disable threshold
-CSV_PREFIX       = "trend_output_"  # file name will be <prefix><date>.csv
-# ──────────────────────────────────────────────────────────────────────────────
+load_dotenv()                      # pick up GOOGLE_APPLICATION_CREDENTIALS, etc.
+client = bigquery.Client()
 
-load_dotenv()                       # pulls GOOGLE_APPLICATION_CREDENTIALS, etc.
-client = bigquery.Client()          # uses those creds
+# ────────────────────────────────────────────────────────────────
+# helpers
+# ────────────────────────────────────────────────────────────────
+def get_latest_partition():
+    sql = """
+        SELECT PARSE_DATE('%Y%m%d', MAX(partition_id)) AS latest_dt
+        FROM  `bigquery-public-data.google_trends.INFORMATION_SCHEMA.PARTITIONS`
+        WHERE table_name=@tbl AND partition_id != '__NULL__'
+    """
+    job = client.query(sql, job_config=bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter('tbl', 'STRING', 'top_rising_terms')]
+    ))
+    return job.result()[0]['latest_dt']          # returns a DATE
 
-SQL = f"""
-/* 1️⃣  get the latest {WINDOW_DAYS} partitions (one per refresh_date) */
-WITH latest_partitions AS (
-  SELECT DISTINCT
-         PARSE_DATE('%Y%m%d', partition_id) AS dt
-  FROM   `bigquery-public-data.google_trends.INFORMATION_SCHEMA.PARTITIONS`
-  WHERE  table_name = 'top_rising_terms'
-         AND partition_id <> '__NULL__'
-  ORDER  BY dt DESC
-  LIMIT  {WINDOW_DAYS}
-),
+LATEST = get_latest_partition()
 
-/* 2️⃣  pull rows for those dates */
-raw AS (
-  SELECT term,
-         dma_id,
-         percent_gain,
-         score,
-         week
-  FROM   `bigquery-public-data.google_trends.top_rising_terms`
-  WHERE  refresh_date IN (SELECT dt FROM latest_partitions)
-         AND percent_gain >= {MIN_PERCENT_GAIN}
-         AND score        >= {MIN_SCORE}
-),
+def build_query(table_name:str) -> str:
+    if table_name == "top_rising_terms":
+        return f"""
+        -- rising terms (may be <200)
+        WITH raw AS (
+          SELECT term,
+                 dma_id,
+                 percent_gain,
+                 score,
+                 week
+          FROM   `bigquery-public-data.google_trends.{table_name}`
+          WHERE  refresh_date = DATE '{LATEST}'
+        ),
+        dedup AS (
+          SELECT * EXCEPT(rn)
+          FROM  (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY term, dma_id ORDER BY week DESC) AS rn
+            FROM raw
+          )
+          WHERE rn = 1
+        ),
+        stats AS (
+          SELECT term,
+                 COUNT(DISTINCT dma_id)          AS dma_hits,
+                 APPROX_QUANTILES(percent_gain,2)[OFFSET(1)] AS median_gain
+          FROM dedup
+          GROUP BY term
+        )
+        SELECT term,
+               dma_hits,
+               dma_hits/210.0                          AS coverage_ratio,
+               median_gain,
+               (dma_hits/210.0)*median_gain            AS spread_intensity_score
+        FROM stats
+        ORDER BY spread_intensity_score DESC
+        LIMIT 200
+        """
+    else:  # top_terms table
+        return f"""
+        SELECT term,
+               score
+        FROM   `bigquery-public-data.google_trends.{table_name}`
+        WHERE  refresh_date = DATE '{LATEST}'
+        ORDER  BY score DESC
+        LIMIT  200
+        """
 
-/* 3️⃣  dedupe: keep newest week per term×DMA */
-dedup AS (
-  SELECT *
-  FROM (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY term, dma_id
-                                  ORDER BY week DESC) AS rn
-        FROM   raw)
-  WHERE rn = 1
-),
+def export(csv_prefix:str, sql:str):
+    df = client.query(sql).result().to_dataframe()
+    fname = f"{csv_prefix}_{LATEST}.csv"
+    df.to_csv(fname, index=False)
+    print(f"[+]  {fname} written  (rows: {len(df)})")
 
-/* 4️⃣  aggregate stats per term */
-stats AS (
-  SELECT
-        term,
-        COUNT(DISTINCT dma_id)                          AS dma_hits,
-        APPROX_QUANTILES(percent_gain, 2)[OFFSET(1)]    AS median_gain
-  FROM   dedup
-  GROUP  BY term
-)
+# ────────────────────────────────────────────────────────────────
+# main
+# ────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    export("trend_rising", build_query("top_rising_terms"))
+    export("trend_top",    build_query("top_terms"))
 
-/* 5️⃣  final ranking */
-SELECT
-    term,
-    dma_hits,
-    dma_hits / 210.0                        AS coverage_ratio,
-    median_gain,
-    (dma_hits / 210.0) * median_gain        AS spread_intensity_score
-FROM stats
-ORDER BY spread_intensity_score DESC
-LIMIT 200;
-"""
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Execute and save
-results = client.query(SQL).result().to_dataframe()
-today   = dt.date.today().isoformat()
-csv_file = f"{CSV_PREFIX}{today}.csv"
-results.to_csv(csv_file, index=False)
-
-print(f"[✓] Trend CSV generated → {csv_file}  (rows: {len(results)})")
