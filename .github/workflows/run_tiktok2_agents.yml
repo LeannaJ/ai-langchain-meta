@@ -2,8 +2,8 @@ name: Run TikTok LLM Script Every 6 Hours
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # 每 6 小時執行一次（UTC）
-  workflow_dispatch:        # 也允許手動執行
+    - cron: "0 */6 * * *"  
+  workflow_dispatch:
 
 jobs:
   run-script:
@@ -22,6 +22,14 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r tiktok_llm_requirements.txt
+
+      - name: Install Chrome for Selenium
+        run: |
+          sudo apt update
+          sudo apt install -y wget curl unzip
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          google-chrome --version
 
       - name: Run TikTok Script
         env:
