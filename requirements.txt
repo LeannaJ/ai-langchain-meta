@@ -5,3 +5,5 @@ requests-html
 lxml_html_clean
 playwright
 tweepy
+selenium
+tiktokapi
