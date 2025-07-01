@@ -1,0 +1,36 @@
+name: Run TikTok Trends Workflow
+
+on:
+  workflow_dispatch:  # Manually trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📁 Checkout repo
+      uses: actions/checkout@v3
+
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: 📦 Install dependencies
+      run: |
+        pip install selenium playwright TikTokApi
+        python -m playwright install
+
+    - name: 🔍 Run Trends24 scraper
+      run: python "Trends 24 Collector for GITHUB.py"
+
+    - name: 📹 Run TikTok scraper
+      run: python "TikTok Fetch for GITHUB.py"
+
+    - name: 📤 Upload results
+      uses: actions/upload-artifact@v3
+      with:
+        name: tiktok-trends-results
+        path: |
+          trends24_us_hashtags.json
+          tiktok_tiktokapi_results.json
