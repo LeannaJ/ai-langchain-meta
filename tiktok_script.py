@@ -9,39 +9,14 @@ import psycopg2
 
 nest_asyncio.apply()
 
-# ✅ FREE PROXY LIST (Webshare)
-proxy_list = [
-    {"ip": "198.23.239.134", "port": 6540},
-    {"ip": "207.244.217.165", "port": 6712},
-    {"ip": "107.172.163.27", "port": 6543},
-    {"ip": "23.94.138.75", "port": 6349},
-    {"ip": "216.155.158.159", "port": 6837}
-]
-
 # ✅ COMMON DESKTOP USER AGENT
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-async def get_single_ms_token(playwright, proxy=None):
-    ip = proxy["ip"]
-    port = proxy["port"]
-    username = os.getenv("PROXY_USER")
-    password = os.getenv("PROXY_PASS")
-
-    proxy_config = {
-        "server": f"http://{ip}:{port}",
-        "username": username,
-        "password": password
-    }
-
-    print(f"🌐 Opening TikTok with proxy: ***{ip}:{port}")
+async def get_single_ms_token(playwright):
+    print(f"🌐 Opening TikTok without proxy")
     try:
-        browser = await playwright.chromium.launch(
-            headless=True,
-            proxy=proxy_config
-        )
-        context = await browser.new_context(
-            user_agent=USER_AGENT
-        )
+        browser = await playwright.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent=USER_AGENT)
         page = await context.new_page()
 
         await page.goto("https://www.tiktok.com", timeout=60000)
@@ -52,16 +27,15 @@ async def get_single_ms_token(playwright, proxy=None):
         ms_tokens = [c["value"] for c in cookies if c["name"] == "msToken"]
         return ms_tokens[-1] if ms_tokens else None
     except Exception as e:
-        print(f"❌ Proxy failed: ***{ip}:{port} → {e}")
+        print(f"❌ Failed to get msToken → {e}")
         return None
 
 async def collect_ms_tokens(n=6):
     tokens = []
     async with async_playwright() as p:
         for i in range(n):
-            proxy = proxy_list[i % len(proxy_list)]
-            print(f"\n🔁 Session {i+1} using proxy: {proxy}")
-            token = await get_single_ms_token(p, proxy=proxy)
+            print(f"\n🔁 Session {i+1} without proxy")
+            token = await get_single_ms_token(p)
             if token:
                 print(f"✅ Token #{i+1}: {token[:50]}...")
                 tokens.append(token)
@@ -84,22 +58,10 @@ async def main():
         for i, session in enumerate(api.sessions):
             print(f"\n📅 Scraping with session #{i+1}")
 
-            # ✨ New: Take a screenshot of the trending page using the same proxy
+            # ✨ Screenshot trending page
             try:
-                proxy = proxy_list[i % len(proxy_list)]
-                ip = proxy["ip"]
-                port = proxy["port"]
-                username = os.getenv("PROXY_USER")
-                password = os.getenv("PROXY_PASS")
-
-                proxy_config = {
-                    "server": f"http://{ip}:{port}",
-                    "username": username,
-                    "password": password
-                }
-
                 async with async_playwright() as p:
-                    browser = await p.chromium.launch(headless=True, proxy=proxy_config)
+                    browser = await p.chromium.launch(headless=True)
                     context = await browser.new_context(user_agent=USER_AGENT)
                     page = await context.new_page()
 
@@ -115,12 +77,11 @@ async def main():
 
                     print(f"🖼 Screenshot saved to: {screenshot_path}")
                     print(f"📄 HTML saved to: {html_path}")
-
                     await browser.close()
             except Exception as e:
                 print(f"⚠️ Failed to load trending page (session #{i+1}): {e}")
 
-            # ✅ Continue with TikTokApi scraping
+            # ✅ TikTokApi scraping
             count = 0
             try:
                 async for video in api.trending.videos(session=session, count=30):
@@ -129,7 +90,6 @@ async def main():
                 print(f"✅ Retrieved {count} videos from session #{i+1}")
             except Exception as e:
                 print(f"⚠️ Failed on session #{i+1}: {e}")
-
 
     unique_videos = {}
     for v in all_data:
