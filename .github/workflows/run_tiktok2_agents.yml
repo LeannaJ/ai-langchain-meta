@@ -32,3 +32,11 @@ jobs:
         run: |
           set -eux
           python "TikTok Script with LLM support.py"
+          
+      - name: Upload debug artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: tiktok-debug-files
+          path: |
+            *.png
+            *.html
