@@ -71,23 +71,25 @@ async def scrape_hashtag(tag, max_videos=10):
             print(f"🔍 Visiting: {url}")
             debug_log(f"➡️ Going to URL: {url}")
             await page.goto(url, timeout=60000)
-            debug_log("✅ Page loaded. Waiting 5 seconds for content...")
-            await page.wait_for_timeout(5000)
+            debug_log("✅ Page loaded. Scrolling to load content...")
 
-            debug_log("🔍 Locating video blocks...")
-            videos = await page.locator("div[data-e2e='search-video-item']").all()
-            debug_log(f"📹 Found {len(videos)} video blocks")
+            for _ in range(3):
+                await page.mouse.wheel(0, 2000)
+                await page.wait_for_timeout(2000)
+
+            debug_log("🔍 Locating video links...")
+            videos = await page.locator("a[href*='/video/']").all()
+            debug_log(f"📹 Found {len(videos)} video links")
 
             for idx, video in enumerate(videos[:max_videos]):
                 print(f"🔄 Parsing video {idx+1}/{min(len(videos), max_videos)}")
                 try:
-                    href = await video.locator("a").get_attribute("href")
-                    desc = await video.locator("a").text_content()
-                    results.append({"url": href, "description": desc})
+                    href = await video.get_attribute("href")
+                    if href:
+                        results.append({"url": href, "description": "N/A"})
                 except Exception as ve:
                     print(f"⚠️ Failed to parse one video: {ve}")
 
-            # Save HTML and screenshot
             await page.screenshot(path=f"{tag}_screenshot.png")
             html_content = await page.content()
             with open(f"{tag}_html_dump.html", "w", encoding="utf-8") as f:
