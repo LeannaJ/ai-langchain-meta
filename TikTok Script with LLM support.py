@@ -9,6 +9,13 @@ from google.generativeai.types.safety_types import HarmCategory, HarmBlockThresh
 import asyncio
 from playwright.async_api import async_playwright
 
+DEBUG = True
+
+def debug_log(msg):
+    if DEBUG:
+        print(f"🪵 {msg}")
+
+
 # === Load API Key ===
 load_dotenv(dotenv_path=".env")
 api_key = os.getenv("GEMINI_API_KEY")
@@ -54,7 +61,16 @@ def get_trending_hashtags():
         return ["fashion", "style", "outfitoftheday"]
 
 async def scrape_hashtag(tag, max_videos=10):
+    debug_log(f"🚀 Starting scrape for #{tag}")
     results = []
+
+    # Save screenshot and HTML for debugging
+    await page.screenshot(path=f"{tag}_screenshot.png")
+    html_content = await page.content()
+    with open(f"{tag}_html_dump.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+    debug_log(f"🖼 Screenshot and HTML saved for #{tag}")
+    
     url = f"https://www.tiktok.com/tag/{tag}"
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -62,10 +78,15 @@ async def scrape_hashtag(tag, max_videos=10):
         page = await context.new_page()
         try:
             print(f"🔍 Visiting: {url}")
-            await page.goto(url, timeout=60000)
-            await page.wait_for_timeout(5000)
-            videos = await page.locator("div[data-e2e='search-video-item']").all()
-            for video in videos[:max_videos]:
+            debug_log(f"➡️ Going to URL: {url}")
+        await page.goto(url, timeout=60000)
+            debug_log("✅ Page loaded. Waiting 5 seconds for content...")
+        await page.wait_for_timeout(5000)
+            debug_log("🔍 Locating video blocks...")
+        videos = await page.locator("div[data-e2e='search-video-item']").all()
+        debug_log(f"📹 Found {len(videos)} video blocks")
+            for idx, video in enumerate(videos[:max_videos]):
+            print(f"🔄 Parsing video {idx+1}/{min(len(videos), max_videos)}")
                 try:
                     href = await video.locator("a").get_attribute("href")
                     desc = await video.locator("a").text_content()
@@ -84,6 +105,14 @@ async def main():
         print(f"🔥 Gemini recommends: {hashtags}")
 
         all_results = []
+
+    # Save screenshot and HTML for debugging
+    await page.screenshot(path=f"{tag}_screenshot.png")
+    html_content = await page.content()
+    with open(f"{tag}_html_dump.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+    debug_log(f"🖼 Screenshot and HTML saved for #{tag}")
+    
         for tag in hashtags:
             try:
                 result = await scrape_hashtag(tag, max_videos=10)
