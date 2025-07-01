@@ -34,7 +34,7 @@ jobs:
           python "TikTok Script with LLM support.py"
           
       - name: Upload debug artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tiktok-debug-files
           path: |
