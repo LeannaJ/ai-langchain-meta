@@ -48,9 +48,10 @@ async def fetch_hashtag_videos(api, hashtag):
 async def main():
     api = TikTokApi()
     await api.create_sessions(
-        headless=False,
-        browser="webkit"
+        headless=True,          # ✅ must be True on GitHub Actions
+        browser="chromium"      # ✅ more CI-friendly
     )
+
 
     all_results = []
     for tag in hashtag_list:
