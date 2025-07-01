@@ -83,6 +83,44 @@ async def main():
 
         for i, session in enumerate(api.sessions):
             print(f"\n📅 Scraping with session #{i+1}")
+
+            # ✨ New: Take a screenshot of the trending page using the same proxy
+            try:
+                proxy = proxy_list[i % len(proxy_list)]
+                ip = proxy["ip"]
+                port = proxy["port"]
+                username = os.getenv("PROXY_USER")
+                password = os.getenv("PROXY_PASS")
+
+                proxy_config = {
+                    "server": f"http://{ip}:{port}",
+                    "username": username,
+                    "password": password
+                }
+
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True, proxy=proxy_config)
+                    context = await browser.new_context(user_agent=USER_AGENT)
+                    page = await context.new_page()
+
+                    await page.goto("https://www.tiktok.com/trending", timeout=60000)
+                    await page.wait_for_timeout(10000)
+
+                    os.makedirs("screenshots", exist_ok=True)
+                    screenshot_path = f"screenshots/session_{i+1}_trending.png"
+                    html_path = f"screenshots/session_{i+1}_trending.html"
+                    await page.screenshot(path=screenshot_path)
+                    with open(html_path, "w", encoding="utf-8") as f:
+                        f.write(await page.content())
+
+                    print(f"🖼 Screenshot saved to: {screenshot_path}")
+                    print(f"📄 HTML saved to: {html_path}")
+
+                    await browser.close()
+            except Exception as e:
+                print(f"⚠️ Failed to load trending page (session #{i+1}): {e}")
+
+            # ✅ Continue with TikTokApi scraping
             count = 0
             try:
                 async for video in api.trending.videos(session=session, count=30):
@@ -92,7 +130,6 @@ async def main():
             except Exception as e:
                 print(f"⚠️ Failed on session #{i+1}: {e}")
 
-    print(f"\n📊 Total videos collected: {len(all_data)}")
 
     unique_videos = {}
     for v in all_data:
