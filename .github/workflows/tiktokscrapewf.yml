@@ -1,7 +1,7 @@
 name: Run TikTok Trends Workflow
 
 on:
-  workflow_dispatch:  # Manually trigger from GitHub UI
+  workflow_dispatch:  # Manually triggered
 
 jobs:
   build:
@@ -28,7 +28,7 @@ jobs:
       run: python "TikTok Fetch for GITHUB.py"
 
     - name: 📤 Upload results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: tiktok-trends-results
         path: |
