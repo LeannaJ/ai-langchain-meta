@@ -25,7 +25,7 @@ jobs:
           playwright install --with-deps
 
       - name: 🚀 Run scraper
-        run: python tiktok_hashtag.py
+        run: python Tiktok_hashtag.py
 
       - name: 📤 Upload result CSV
         uses: actions/upload-artifact@v4
