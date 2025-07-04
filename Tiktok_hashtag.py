@@ -8,7 +8,7 @@ async def scrape_tiktok_hashtags():
     url = "https://ads.tiktok.com/business/creativecenter/inspiration/popular/hashtag/pc/en"
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # Set True if deploying
+        browser = await p.chromium.launch(headless=True)  
         page = await browser.new_page()
 
         print("🌐 Opening TikTok Creative Center page...")
