@@ -50,28 +50,40 @@ async def scrape_tiktok_hashtags():
         row_locator = page.locator("a[class*='CardPc_container___']")
         count = await row_locator.count()
         print(f"📦 Found {count} rows, start extracting...")
-
+        
         for i in range(count):
             row = row_locator.nth(i)
             try:
                 title_el = row.locator('span[class^="CardPc_titleText__"]').first
-                title = await title_el.inner_text()
+                title_raw = await title_el.inner_text()
 
                 values = row.locator('span[class^="CardPc_itemValue__"]')
                 value_count = await values.count()
 
-                view = await values.nth(0).inner_text() if value_count >= 1 else "N/A"
+                view_raw = await values.nth(0).inner_text() if value_count >= 1 else "N/A"
+
+                # processing hashtags data
+                hashtag = title_raw.strip().lstrip("#")
+
+                view_clean = view_raw.strip().upper().replace(",", "")
+                if "K" in view_clean:
+                    views = str(int(float(view_clean.replace("K", "")) * 1000))
+                elif "M" in view_clean:
+                    views = str(int(float(view_clean.replace("M", "")) * 1_000_000))
+                else:
+                    views = view_clean  # fallback
 
                 results.append({
                     "rank": i + 1,
-                    "hashtag": title.strip(),
-                    "views": view.strip()
+                    "hashtag": hashtag,
+                    "views": views
                 })
 
-                print(f"{i+1}. ✅ #{title.strip()} | Views: {view.strip()}")
+                print(f"{i+1}. ✅ {hashtag} | Views: {views}")
 
             except Exception as e:
                 print(f"⚠️ Failed at row {i+1}：{e}")
+
 
         await browser.close()
 
