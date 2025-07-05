@@ -28,8 +28,12 @@ jobs:
           sudo apt-get install -y xvfb
           xvfb-run python Tiktok_hashtag.py
 
-      - name: Upload screenshot
+      - name: Upload CSV and Screenshot
         uses: actions/upload-artifact@v4
         with:
-          name: tiktok-screenshot
-          path: screenshot.png
+          name: tiktok-hashtag-output
+          path: |
+            tiktok_hashtags.csv
+            tiktok_hashtag_landing.png
+            error_screenshot.png
+
