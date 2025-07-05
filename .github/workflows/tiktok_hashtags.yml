@@ -34,6 +34,7 @@ jobs:
           path: tiktok_hashtags.csv
 
       - name: Upload screenshot
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tiktok-hashtag-screenshot
