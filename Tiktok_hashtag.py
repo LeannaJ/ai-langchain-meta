@@ -14,6 +14,10 @@ async def scrape_tiktok_hashtags():
         print("🌐 Opening TikTok Creative Center page...")
         await page.goto(url, timeout=60000)
 
+        # 📸 Take a screenshot of the initial page
+        await page.screenshot(path="tiktok_hashtag_landing.png", full_page=True)
+        print("📸 Screenshot saved as tiktok_hashtag_landing.png")
+
         print("⏳ Waiting hashtag Table...")
         await page.wait_for_selector("a[class*='CardPc_container___']", timeout=60000)
 
@@ -30,10 +34,10 @@ async def scrape_tiktok_hashtags():
                     print("✅ No more buttons, data loaded complete")
                     break
             except Exception as e:
-                print(f"⚠️ click failed or can't find buttons：{e}")
+                print(f"⚠️ Click failed or can't find buttons：{e}")
                 break
 
-        print("🔍 start extracting hashtag cards...")
+        print("🔍 Start extracting hashtag cards...")
         row_locator = page.locator("a[class*='CardPc_container___']")
         count = await row_locator.count()
         print(f"📦 Found {count} rows, start extracting...")
@@ -58,20 +62,20 @@ async def scrape_tiktok_hashtags():
                 print(f"{i+1}. ✅ #{title.strip()} | Views: {view.strip()}")
 
             except Exception as e:
-                print(f"⚠️ Filed at {i+1} row ：{e}")
+                print(f"⚠️ Failed at row {i+1}：{e}")
 
         await browser.close()
 
-    print(f"\n🎉 Scraping completed, Found {len(results)} hashtag data.")
+    print(f"\n🎉 Scraping completed. Found {len(results)} hashtag entries.")
 
-    # ✅ Ecport to CSV
+    # ✅ Export to CSV
     filename = "tiktok_hashtags.csv"
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["rank", "hashtag", "views"])
         writer.writeheader()
         writer.writerows(results)
 
-    print(f"📁 results wrote to：{filename}")
+    print(f"📁 Results written to：{filename}")
     return results
 
 # 🔧 Execution
