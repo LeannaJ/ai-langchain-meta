@@ -7,11 +7,9 @@ on:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -23,18 +21,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           playwright install chromium
-      - name: Run scraper
-        run: python Tiktok_hashtag.py
 
-      - name: Upload CSV result
-        uses: actions/upload-artifact@v4
-        with:
-          name: tiktok-hashtags-csv
-          path: tiktok_hashtags.csv
+      - name: Run script with xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run python Tiktok_hashtag.py
 
       - name: Upload screenshot
-        if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: tiktok-hashtag-screenshot
-          path: tiktok_hashtag_landing.png
+          name: tiktok-screenshot
+          path: screenshot.png
