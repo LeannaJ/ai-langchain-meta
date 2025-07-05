@@ -15,7 +15,7 @@ async def scrape_tiktok_hashtags():
         await page.goto(url, timeout=60000)
 
         print("⏳ Waiting hashtag Table...")
-        await page.wait_for_selector("a[class*='CardPc_container___']", timeout=30000)
+        await page.wait_for_selector("a[class*='CardPc_container___']", timeout=60000)
 
         print("🔁 Click『View more』till no more button shows up...")
         while True:
