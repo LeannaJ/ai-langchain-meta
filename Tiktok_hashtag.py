@@ -12,7 +12,7 @@ async def scrape_tiktok_hashtags():
         page = await browser.new_page()
 
         print("🌐 Opening TikTok Creative Center page...")
-        await page.goto(url, timeout=60000)
+        await page.goto(url, timeout=90000)
 
         # 📸 Take a screenshot of the initial page
         await page.screenshot(path="tiktok_hashtag_landing.png", full_page=True)
