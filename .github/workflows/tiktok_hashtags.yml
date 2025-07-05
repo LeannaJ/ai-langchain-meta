@@ -1,34 +1,40 @@
-name: TikTok Hashtag Scraper
+name: Scrape TikTok Hashtags
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:       # Manual trigger
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r tiktok_requirements.txt
-          playwright install --with-deps
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium
 
-      - name: 🚀 Run scraper
+      - name: Run scraper
         run: python Tiktok_hashtag.py
 
-      - name: 📤 Upload result CSV
-        uses: actions/upload-artifact@v4
+      - name: Upload CSV result
+        uses: actions/upload-artifact@v3
         with:
-          name: tiktok-hashtags
+          name: tiktok-hashtags-csv
           path: tiktok_hashtags.csv
+
+      - name: Upload screenshot
+        uses: actions/upload-artifact@v3
+        with:
+          name: tiktok-hashtag-screenshot
+          path: tiktok_hashtag_landing.png
