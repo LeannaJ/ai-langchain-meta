@@ -15,7 +15,7 @@ async def scrape_tiktok_hashtags():
         await page.goto(url, timeout=60000)
         print("🌐 Verifying if page opened properly...")
         try:
-            await page.wait_for_selector("main", timeout=10000)  # or another reliable root element
+            await page.wait_for_selector("main", timeout=60000)  # or another reliable root element
             print("✅ Page loaded successfully.")
         except Exception as e:
             print(f"❌ Page failed to load: {e}")
