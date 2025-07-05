@@ -79,4 +79,4 @@ async def scrape_tiktok_hashtags():
     # ✅ Export to CSV
     filename = "tiktok_hashtags.csv"
     with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["rank", "hashtag", "views"]
+        writer = csv.DictWriter(f, fieldnames=["rank", "hashtag", "views"])
