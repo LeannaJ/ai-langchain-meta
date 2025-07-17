@@ -1,0 +1,94 @@
+name: Consolidate CSV Outputs
+
+on:
+  workflow_dispatch:   # Manually triggered (or use schedule if you want)
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI
+        run: sudo apt-get install gh -y
+
+      - name: Download latest artifacts from all workflows
+        run: |
+          #!/bin/bash
+          set -e
+
+          # List of workflow names to pull from
+          WORKFLOWS=(
+            "Run Twitter Agent"
+            "Run TikTok LLM Script Every 6 Hours"
+            "Scrape TikTok Hashtags"
+            "run reddit agent"
+            "Run YouTube Agent"
+            "Run Google Trends Agent"
+          )
+          
+          REPO="${{ github.repository }}"
+          mkdir csvs
+
+          for WF_NAME in "${WORKFLOWS[@]}"; do
+            echo "Fetching latest run for: $WF_NAME"
+            # Get workflow ID by name
+            WF_ID=$(gh api -X GET "repos/$REPO/actions/workflows" --jq ".workflows[] | select(.name==\"$WF_NAME\") | .id")
+            
+            if [ -z "$WF_ID" ]; then
+              echo "Workflow $WF_NAME not found!"
+              continue
+            fi
+
+            # Get the latest successful run ID
+            RUN_ID=$(gh api -X GET "repos/$REPO/actions/workflows/$WF_ID/runs?status=success&branch=main&per_page=1" --jq ".workflow_runs[0].id")
+            
+            if [ -z "$RUN_ID" ]; then
+              echo "No successful run found for $WF_NAME!"
+              continue
+            fi
+
+            echo "Latest successful run ID: $RUN_ID"
+
+            # Get artifact ID
+            ARTIFACT_JSON=$(gh api -X GET "repos/$REPO/actions/runs/$RUN_ID/artifacts")
+            ARTIFACT_ID=$(echo "$ARTIFACT_JSON" | jq ".artifacts[0].id")
+
+            if [ -z "$ARTIFACT_ID" ] || [ "$ARTIFACT_ID" == "null" ]; then
+              echo "No artifact found for $WF_NAME!"
+              continue
+            fi
+
+            # Download the artifact
+            echo "Downloading artifact $ARTIFACT_ID"
+            gh api -X GET -H "Accept: application/vnd.github+json" \
+              "repos/$REPO/actions/artifacts/$ARTIFACT_ID/zip" > "csvs/$WF_NAME.zip"
+
+            # Unzip and extract CSVs
+            unzip -o "csvs/$WF_NAME.zip" -d csvs/
+          done
+
+      - name: Merge CSVs
+        run: |
+          cd csvs
+          python3 <<EOF
+import glob
+import pandas as pd
+
+csv_files = glob.glob("*.csv")
+if not csv_files:
+    print("No CSV files found!")
+    exit(1)
+dfs = [pd.read_csv(f) for f in csv_files]
+merged = pd.concat(dfs, ignore_index=True)
+merged.to_csv("../consolidated_output.csv", index=False)
+EOF
+
+      - name: Upload consolidated CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-output
+          path: consolidated_output.csv
