@@ -15,6 +15,9 @@ jobs:
       - name: Install GitHub CLI
         run: sudo apt-get install gh jq -y
 
+      - name: Install pandas
+        run: pip install pandas
+
       - name: Download latest artifacts from all workflows
         run: |
           #!/bin/bash
