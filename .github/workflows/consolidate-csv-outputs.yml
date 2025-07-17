@@ -79,8 +79,8 @@ jobs:
           import pandas as pd
           csv_files = glob.glob('*.csv')
           if not csv_files:
-          print('No CSV files found!')
-          exit(1)
+            print('No CSV files found!')
+            exit(1)
           dfs = [pd.read_csv(f) for f in csv_files]
           merged = pd.concat(dfs, ignore_index=True)
           merged.to_csv('../consolidated_output.csv', index=False)
