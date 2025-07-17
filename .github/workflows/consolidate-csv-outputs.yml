@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install GitHub CLI
-        run: sudo apt-get install gh -y
+        run: sudo apt-get install gh jq -y
 
       - name: Download latest artifacts from all workflows
         run: |
@@ -29,7 +29,7 @@ jobs:
             "Run YouTube Agent"
             "Run Google Trends Agent"
           )
-          
+
           REPO="${{ github.repository }}"
           mkdir csvs
 
@@ -37,7 +37,7 @@ jobs:
             echo "Fetching latest run for: $WF_NAME"
             # Get workflow ID by name
             WF_ID=$(gh api -X GET "repos/$REPO/actions/workflows" --jq ".workflows[] | select(.name==\"$WF_NAME\") | .id")
-            
+
             if [ -z "$WF_ID" ]; then
               echo "Workflow $WF_NAME not found!"
               continue
@@ -45,7 +45,7 @@ jobs:
 
             # Get the latest successful run ID
             RUN_ID=$(gh api -X GET "repos/$REPO/actions/workflows/$WF_ID/runs?status=success&branch=main&per_page=1" --jq ".workflow_runs[0].id")
-            
+
             if [ -z "$RUN_ID" ]; then
               echo "No successful run found for $WF_NAME!"
               continue
@@ -72,22 +72,21 @@ jobs:
           done
 
       - name: Merge CSVs
-  run: |
-    cd csvs
-    cat > merge.py << 'EOF'
-import glob
-import pandas as pd
+        run: |
+          cd csvs
+          cat > merge.py << 'EOF'
+          import glob
+          import pandas as pd
+          csv_files = glob.glob('*.csv')
+          if not csv_files:
+          print('No CSV files found!')
+          exit(1)
+          dfs = [pd.read_csv(f) for f in csv_files]
+          merged = pd.concat(dfs, ignore_index=True)
+          merged.to_csv('../consolidated_output.csv', index=False)
+          EOF
+          python3 merge.py
 
-csv_files = glob.glob('*.csv')
-if not csv_files:
-    print('No CSV files found!')
-    exit(1)
-dfs = [pd.read_csv(f) for f in csv_files]
-merged = pd.concat(dfs, ignore_index=True)
-merged.to_csv('../consolidated_output.csv', index=False)
-EOF
-    python3 merge.py
-    
       - name: Upload consolidated CSV
         uses: actions/upload-artifact@v4
         with:
