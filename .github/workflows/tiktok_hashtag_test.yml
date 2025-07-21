@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-22.04
     
     env:
-      SUPABASE_URL: https://haz22zel's Project.supabase.co
+      SUPABASE_URL: https://qeqlcikxfougmgahwyit.supabase.co
       SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlcWxjaWt4Zm91Z21nYWh3eWl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDcxMjM0NSwiZXhwIjoyMDY2Mjg4MzQ1fQ.bHxA3Vo5flNTorS6lTUHdQ1kBSbT-pshty78EtAVJ-c
       
     steps:
