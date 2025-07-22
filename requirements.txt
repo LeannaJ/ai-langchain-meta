@@ -7,3 +7,4 @@ playwright
 tweepy
 selenium
 tiktokapi
+google-generative-ai>=0.10.0
