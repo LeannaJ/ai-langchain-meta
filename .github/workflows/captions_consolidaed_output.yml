@@ -23,6 +23,7 @@ jobs:
       run: |
         set -e
         mkdir csvs
+
         WORKFLOWS=(
           "Run Twitter Agent"
           "Run TikTok LLM Script Every 6 Hours"
@@ -32,22 +33,37 @@ jobs:
           "Run Google Trends Agent"
         )
         REPO="${{ github.repository }}"
+
         for WF in "${WORKFLOWS[@]}"; do
           echo "Fetching artifacts for workflow: $WF"
-          WF_ID=$(gh api -H "Authorization: token $GH_TOKEN" \
-            /repos/$REPO/actions/workflows \
-            --jq ".workflows[] | select(.name==\"$WF\") | .id")
-          RUN_ID=$(gh api -H "Authorization: token $GH_TOKEN" \
-            /repos/$REPO/actions/workflows/$WF_ID/runs?status=success&per_page=1 \
-            --jq ".workflow_runs[0].id")
-          ART_ID=$(gh api -H "Authorization: token $GH_TOKEN" \
-            /repos/$REPO/actions/runs/$RUN_ID/artifacts \
-            --jq ".artifacts[0].id")
-          gh api -H "Authorization: token $GH_TOKEN" \
-            /repos/$REPO/actions/artifacts/$ART_ID/zip \
-            -o csvs/${WF// /_}.zip
-          unzip -o csvs/${WF// /_}.zip -d csvs/
+
+          # 1) Query the workflow list, then extract its .id via jq
+          WF_ID=$(gh api \
+            -H "Authorization: token $GH_TOKEN" \
+            "/repos/$REPO/actions/workflows" | \
+            jq -r ".workflows[] | select(.name==\"$WF\") | .id")
+
+          # 2) Get the most recent successful run ID
+          RUN_ID=$(gh api \
+            -H "Authorization: token $GH_TOKEN" \
+            "/repos/$REPO/actions/workflows/$WF_ID/runs?status=success&per_page=1" | \
+            jq -r ".workflow_runs[0].id")
+
+          # 3) Get that run’s artifact ID
+          ART_ID=$(gh api \
+            -H "Authorization: token $GH_TOKEN" \
+            "/repos/$REPO/actions/runs/$RUN_ID/artifacts" | \
+            jq -r ".artifacts[0].id")
+
+          # 4) Download & unzip the artifact
+          gh api \
+            -H "Authorization: token $GH_TOKEN" \
+            "/repos/$REPO/actions/artifacts/$ART_ID/zip" \
+            -o "csvs/${WF// /_}.zip"
+
+          unzip -o "csvs/${WF// /_}.zip" -d csvs/
         done
+
 
     - name: Merge CSVs
       run: |
