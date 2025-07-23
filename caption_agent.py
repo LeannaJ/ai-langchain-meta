@@ -29,7 +29,7 @@ in an upbeat, engaging style. Output JSON exactly as:
 NUM_CAPTIONS = 12
 
 
-def generate_captions_for_trend(trend: str) -> list[str]:
+def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
     """Call the LLM, extract the JSON block, escape inner quotes, and parse captions."""
     prompt = PROMPT.format(trend=trend)
     response = MODEL.generate_content(
@@ -72,8 +72,8 @@ def generate_captions_for_trend(trend: str) -> list[str]:
     else:
         captions = caps_obj
 
-    # Return exactly NUM_CAPTIONS
-    return captions[:NUM_CAPTIONS]
+    # Return up to n captions
+    return captions[:n]
 
 
 def main():
