@@ -10,17 +10,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run unit tests
         run: pytest --maxfail=1 --disable-warnings -q
+
+      # ---------------------------------------------
+      # Now run the caption generator on yesterday's trends
+      # ---------------------------------------------
+
+      - name: Configure GCP credentials
+        # Assumes you have a GitHub secret named GCP_SA_KEY containing
+        # the full JSON of your service‑account key.
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > $HOME/gcp-sa.json
+          chmod 600 $HOME/gcp-sa.json
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Point at Service Account
+        run: |
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/gcp-sa.json" >> $GITHUB_ENV
+
+      - name: Generate captions CSV
+        # compute yesterday in ISO, e.g. 2025-07-21
+        run: |
+          YESTERDAY=$(date -I -d "yesterday")
+          python caption_agent.py --date $YESTERDAY
+
+      - name: Upload captions artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: captions-${{ runner.date }}   # or use $YESTERDAY
+          path: captions_*.csv
