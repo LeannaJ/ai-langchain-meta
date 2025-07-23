@@ -1,0 +1,80 @@
+diff --git a/caption_agent.py b/caption_agent.py
+index 1234567..abcdef0 100644
+--- a/caption_agent.py
++++ b/caption_agent.py
+@@ -1,6 +1,9 @@
+ #!/usr/bin/env python3
+ """
+-caption_agent.py – Generate Instagram‑style captions for trending topics.
++caption_agent.py – Generate Instagram‑style captions for trending topics.
+ Reads the latest `trend_top_<date>.csv`, calls Gemini,
+-and outputs `captions_<date>.csv` with multiple examples per trend.
++and outputs `captions_<input_basename>.csv` from any input CSV of terms.
++Defaults to `consolidated_output.csv`.
++"""
+ import os
+ import json
+ import re
+@@
+-import pandas as pd
++import pandas as pd
++import argparse
+ from dotenv import load_dotenv
+ import google.generativeai as genai
+
+@@
+ # Prompt template
+ PROMPT = """
+@@
+ # Number of captions to retain
+-NUM_CAPTIONS = 12
++NUM_CAPTIONS = 12
+
+ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
+@@
+     caps = payload.get("captions", []) or []
+     # flatten dict entries if needed
+     if caps and isinstance(caps[0], dict):
+         caps = [c.get("text", "") for c in caps]
+-    return caps[:NUM_CAPTIONS]
++    return caps[:n]
+
+ def main():
++    # allow arbitrary input file and # of captions per term
++    parser = argparse.ArgumentParser(
++        description="Generate captions from a CSV of trending terms"
++    )
++    parser.add_argument(
++        "--input",
++        "-i",
++        default="consolidated_output.csv",
++        help="Path to input CSV (must have a 'term' column)",
++    )
++    parser.add_argument(
++        "--n",
++        type=int,
++        default=NUM_CAPTIONS,
++        help="Number of captions to generate per term",
++    )
++    args = parser.parse_args()
++
++    infile = args.input
++    if not os.path.isfile(infile):
++        raise FileNotFoundError(f"Input file not found: {infile}")
++    df = pd.read_csv(infile)
++
++    # base name for output: e.g. consolidated_output → captions_consolidated_output.csv
++    basename = os.path.splitext(os.path.basename(infile))[0]
++    out_file = f"captions_{basename}.csv"
++
++    all_rows = []
++    for term in df.get("term", []):
++        caps = generate_captions_for_trend(term, n=args.n)
++        for idx, cap in enumerate(caps, start=1):
++            all_rows.append({"term": term, "caption_id": idx, "caption": cap})
++
++    pd.DataFrame(all_rows).to_csv(out_file, index=False)
++    print(f"[✓] Wrote {len(all_rows)} captions to {out_file}")
++
+ if __name__ == "__main__":
+     main()

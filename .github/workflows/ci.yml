@@ -6,10 +6,14 @@ on:
   pull_request:
 
 jobs:
-  test:
+  test_and_caption:
     runs-on: ubuntu-latest
+    env:
+      # your service account JSON must be stored here
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
     steps:
+      # 1) checkout & test
       - name: Checkout
         uses: actions/checkout@v3
 
@@ -26,31 +30,32 @@ jobs:
       - name: Run unit tests
         run: pytest --maxfail=1 --disable-warnings -q
 
-      # ---------------------------------------------
-      # Now run the caption generator on yesterday's trends
-      # ---------------------------------------------
-
-      - name: Configure GCP credentials
-        # Assumes you have a GitHub secret named GCP_SA_KEY containing
-        # the full JSON of your service‑account key.
+      # 2) configure GCP credentials
+      - name: Write service‑account key to disk
         run: |
-          echo "${{ secrets.GCP_SA_KEY }}" > $HOME/gcp-sa.json
-          chmod 600 $HOME/gcp-sa.json
-        env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          echo "${GCP_SA_KEY}" > "$HOME/gcp-sa.json"
+          chmod 600 "$HOME/gcp-sa.json"
 
       - name: Point at Service Account
         run: |
           echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/gcp-sa.json" >> $GITHUB_ENV
 
-      - name: Generate captions CSV
-        # compute yesterday in ISO, e.g. 2025-07-21
+      # 3) generate captions from consolidated CSV
+      - name: Generate captions from consolidated_output.csv
         run: |
-          YESTERDAY=$(date -I -d "yesterday")
-          python caption_agent.py --date $YESTERDAY
+          # Make sure the consolidated CSV exists. If you have a separate workflow,
+          # you must download it here via `actions/download-artifact`, or produce
+          # it in this job before this step.
+          ls consolidated_output.csv
 
+          # Run the caption agent using the new --input flag
+          python caption_agent.py \
+            --input consolidated_output.csv \
+            --n 12
+
+      # 4) upload the captions CSV as an artifact
       - name: Upload captions artifact
         uses: actions/upload-artifact@v4
         with:
-          name: captions-${{ runner.date }}   # or use $YESTERDAY
-          path: captions_*.csv
+          name: captions-consolidated
+          path: captions_consolidated_output.csv
