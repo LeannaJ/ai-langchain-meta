@@ -37,29 +37,26 @@ jobs:
         for WF in "${WORKFLOWS[@]}"; do
           echo "Fetching artifacts for workflow: $WF"
 
-          # 1) Query the workflow list, then extract its .id via jq
           WF_ID=$(gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/workflows" | \
             jq -r ".workflows[] | select(.name==\"$WF\") | .id")
 
-          # 2) Get the most recent successful run ID
           RUN_ID=$(gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/workflows/$WF_ID/runs?status=success&per_page=1" | \
             jq -r ".workflow_runs[0].id")
 
-          # 3) Get that run’s artifact ID
           ART_ID=$(gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/runs/$RUN_ID/artifacts" | \
             jq -r ".artifacts[0].id")
 
-          # 4) Download & unzip the artifact
+          # <-- CHANGE IS HERE: drop the "-o" flag, redirect stdout -->
           gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/artifacts/$ART_ID/zip" \
-            -o "csvs/${WF// /_}.zip"
+            > "csvs/${WF// /_}.zip"
 
           unzip -o "csvs/${WF// /_}.zip" -d csvs/
         done
