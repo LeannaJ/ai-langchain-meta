@@ -12,6 +12,7 @@ import datetime as dt
 import pandas as pd
 from google.cloud import bigquery
 from dotenv import load_dotenv
+from caption_agent import main as run_captions
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
 WINDOW_DAYS    = 7          # how many latest partitions to scan
@@ -117,3 +118,4 @@ def export(prefix: str, sql: str) -> None:
 if __name__ == "__main__":
     export(f"{CSV_PREFIX}_rising", sql_rising())
     export(f"{CSV_PREFIX}_top",    sql_top())
+run_captions()
