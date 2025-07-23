@@ -50,7 +50,7 @@ jobs:
           python caption_agent.py --date $YESTERDAY
 
       - name: Upload captions artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: captions-${{ runner.date }}   # or use $YESTERDAY
           path: captions_*.csv
