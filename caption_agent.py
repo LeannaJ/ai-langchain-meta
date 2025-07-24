@@ -3,13 +3,17 @@
 caption_agent.py – Generate Instagram‑style captions from a CSV of Google Trends rising terms.
 """
 
-import os, re, json, argparse
-from datetime import datetime, timezone
+import os
+import re
+import json
+import argparse
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-load_dotenv()
+# ─── CONFIG ────────────────────────────────────────────────────────────────
+load_dotenv()  # expects GENAI_API_KEY in your .env
 genai.api_key = os.getenv("GENAI_API_KEY")
 MODEL = genai.GenerativeModel("models/gemini-2.0-flash")
 
@@ -29,26 +33,37 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
         safety_settings=[],
     )
     raw = response.text.strip()
+
+    # 1) Extract the first {...} JSON block
     match = re.search(r"\{[\s\S]*\}", raw)
     if not match:
         raise ValueError(f"Could not extract JSON from model response:\n{raw}")
     jtext = match.group()
 
+    # 2) Escape any un‑escaped " inside the caption text fields
     def _escape_inner(m):
         prefix, body = m.group(1), m.group(2)
         safe_body = body.replace('"', '\\"')
         return f"{prefix}{safe_body}\""
 
-    jtext = re.sub(r'("text"\s*:\s*")(.+?)(")', _escape_inner, jtext, flags=re.DOTALL)
+    jtext = re.sub(
+        r'("text"\s*:\s*")(.+?)(")',
+        _escape_inner,
+        jtext,
+        flags=re.DOTALL
+    )
 
+    # 3) Parse the sanitized JSON
     try:
         payload = json.loads(jtext)
     except json.JSONDecodeError as e:
         raise ValueError(f"JSON parse error: {e.msg}\nSanitized JSON:\n{jtext}")
 
     caps = payload.get("captions", []) or []
+    # If Gemini returned objects, extract their "text" field
     if caps and isinstance(caps[0], dict):
         caps = [c.get("text", "") for c in caps]
+
     return caps[:n]
 
 def main():
@@ -57,7 +72,7 @@ def main():
     )
     parser.add_argument(
         "--input", "-i",
-        help="Path to input CSV (must contain a 'term' column). Defaults to trend_rising_<today>.csv",
+        help="Path to input CSV (must contain a 'term' column). Defaults to yesterday's trend_rising_<date>.csv",
         default=None,
     )
     parser.add_argument(
@@ -66,26 +81,35 @@ def main():
     )
     args = parser.parse_args()
 
+    # Determine which file to read
     if args.input:
         infile = args.input
     else:
-        today = datetime.now(timezone.utc).date().isoformat()
-        infile = f"trend_rising_{today}.csv"
+        # Use yesterday’s date since our pipeline writes yesterday’s data
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+        infile = f"trend_rising_{yesterday}.csv"
 
     if not os.path.isfile(infile):
         raise FileNotFoundError(f"Input file not found: {infile}")
 
     df = pd.read_csv(infile)
+
+    # Build output filename from the input basename
     basename = os.path.splitext(os.path.basename(infile))[0]
     out_file = f"captions_{basename}.csv"
 
-    rows = []
+    all_rows = []
     for term in df.get("term", []):
-        for idx, cap in enumerate(generate_captions_for_trend(term, args.n), start=1):
-            rows.append({"term": term, "caption_id": idx, "caption": cap})
+        captions = generate_captions_for_trend(term, n=args.n)
+        for idx, text in enumerate(captions, start=1):
+            all_rows.append({
+                "term": term,
+                "caption_id": idx,
+                "caption": text
+            })
 
-    pd.DataFrame(rows).to_csv(out_file, index=False)
-    print(f"[✓] Wrote {len(rows)} captions to {out_file}")
+    pd.DataFrame(all_rows).to_csv(out_file, index=False)
+    print(f"[✓] Wrote {len(all_rows)} captions to {out_file}")
 
 if __name__ == "__main__":
     main()
