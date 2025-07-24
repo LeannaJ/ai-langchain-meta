@@ -35,6 +35,17 @@ jobs:
         with:
           name: trend-bot-output     # ← make sure this matches the `name:` from your Run Google Trends Agent
           path: .
+          
+      - name: Download trends artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: trend-bot-output   # must match exactly
+          path: .                  # extract into the root of the repo
+
+      - name: Debug: show all files
+        run: |
+          echo ">>> Workspace contents <<<"
+          ls -R .
 
       # 4) Generate captions — let caption_agent.py auto‑pick the newest trend_rising_*.csv
       - name: Generate captions for rising trends
