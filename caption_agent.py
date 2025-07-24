@@ -45,10 +45,11 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
         raise ValueError(f"Could not extract JSON from model response:\n{raw}")
     jtext = match.group()
 
-    # 1a) Escape any stray backslashes so the JSON parser won't choke on invalid \x escapes
-    jtext = jtext.replace("\\", "\\\\")
+    # 2) Escape any stray backslashes so the JSON parser won't choke on invalid \x escapes
+    #    We look for a backslash not followed by one of the JSON escape chars ["\/bfnrtu]
+    jtext = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', jtext)
 
-    # 2) Escape any un‑escaped " inside the caption text fields
+    # 3) Escape any un‑escaped " inside the caption text fields
     def _escape_inner(m):
         prefix, body = m.group(1), m.group(2)
         safe_body = body.replace('"', '\\"')
@@ -61,7 +62,7 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
         flags=re.DOTALL
     )
 
-    # 3) Parse the sanitized JSON
+    # 4) Parse the sanitized JSON
     try:
         payload = json.loads(jtext)
     except json.JSONDecodeError as e:
@@ -81,7 +82,8 @@ def main():
     )
     parser.add_argument(
         "--input", "-i",
-        help="Path to input CSV (must contain a 'term' column). Defaults to trend_rising_<today>.csv",
+        help="Path to input CSV (must contain a 'term' column). "
+             "Defaults to trend_rising_<today>.csv",
         default=None,
     )
     parser.add_argument(
