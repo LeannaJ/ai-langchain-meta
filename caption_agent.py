@@ -7,7 +7,7 @@ import os
 import re
 import json
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -28,10 +28,6 @@ NUM_CAPTIONS = 12
 
 
 def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
-    """
-    Call Gemini, extract the JSON block, escape stray quotes and backslashes,
-    parse, and return up to n captions.
-    """
     response = MODEL.generate_content(
         PROMPT.format(trend=trend),
         generation_config={"temperature": 0.7, "max_output_tokens": 2048},
@@ -45,11 +41,10 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
         raise ValueError(f"Could not extract JSON from model response:\n{raw}")
     jtext = match.group()
 
-    # 2) Escape any stray backslashes so the JSON parser won't choke on invalid \x escapes
-    #    We look for a backslash not followed by one of the JSON escape chars ["\/bfnrtu]
+    # 2) Escape any stray backslashes not part of a valid JSON escape
     jtext = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', jtext)
 
-    # 3) Escape any un‑escaped " inside the caption text fields
+    # 3) Escape any un‑escaped quotes in the "text" fields
     def _escape_inner(m):
         prefix, body = m.group(1), m.group(2)
         safe_body = body.replace('"', '\\"')
@@ -69,10 +64,8 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
         raise ValueError(f"JSON parse error: {e.msg}\nSanitized JSON:\n{jtext}")
 
     caps = payload.get("captions", []) or []
-    # If Gemini returned objects, extract their "text" field
     if caps and isinstance(caps[0], dict):
         caps = [c.get("text", "") for c in caps]
-
     return caps[:n]
 
 
@@ -83,7 +76,7 @@ def main():
     parser.add_argument(
         "--input", "-i",
         help="Path to input CSV (must contain a 'term' column). "
-             "Defaults to trend_rising_<today>.csv",
+             "Defaults to trend_rising_<yesterday>.csv",
         default=None,
     )
     parser.add_argument(
@@ -92,12 +85,12 @@ def main():
     )
     args = parser.parse_args()
 
-    # Determine input file (either user‑supplied or yesterday's rising trends)
     if args.input:
         infile = args.input
     else:
-        today = datetime.now(timezone.utc).date().isoformat()
-        infile = f"trend_rising_{today}.csv"
+        # Use yesterday's date in UTC
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+        infile = f"trend_rising_{yesterday}.csv"
 
     if not os.path.isfile(infile):
         raise FileNotFoundError(f"Input file not found: {infile}")
@@ -108,7 +101,8 @@ def main():
 
     rows = []
     for term in df.get("term", []):
-        for idx, cap in enumerate(generate_captions_for_trend(term, args.n), start=1):
+        caps = generate_captions_for_trend(term, args.n)
+        for idx, cap in enumerate(caps, start=1):
             rows.append({"term": term, "caption_id": idx, "caption": cap})
 
     pd.DataFrame(rows).to_csv(out_file, index=False)
