@@ -37,22 +37,25 @@ jobs:
         for WF in "${WORKFLOWS[@]}"; do
           echo "Fetching artifacts for workflow: $WF"
 
+          # 1) Get the workflow ID (take first)
           WF_ID=$(gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/workflows" | \
-            jq -r ".workflows[] | select(.name==\"$WF\") | .id")
+            jq -r ".workflows[] | select(.name==\"$WF\") | .id" | head -n1)
 
+          # 2) Get its latest successful run ID (take first)
           RUN_ID=$(gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/workflows/$WF_ID/runs?status=success&per_page=1" | \
-            jq -r ".workflow_runs[0].id")
+            jq -r ".workflow_runs[0].id" | head -n1)
 
+          # 3) Get that run’s first artifact ID
           ART_ID=$(gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/runs/$RUN_ID/artifacts" | \
-            jq -r ".artifacts[0].id")
+            jq -r ".artifacts[0].id" | head -n1)
 
-          # <-- CHANGE IS HERE: drop the "-o" flag, redirect stdout -->
+          # 4) Download the ZIP (redirect stdout to file)
           gh api \
             -H "Authorization: token $GH_TOKEN" \
             "/repos/$REPO/actions/artifacts/$ART_ID/zip" \
@@ -60,6 +63,7 @@ jobs:
 
           unzip -o "csvs/${WF// /_}.zip" -d csvs/
         done
+
 
 
     - name: Merge CSVs
