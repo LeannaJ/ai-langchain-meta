@@ -7,13 +7,12 @@ import os
 import re
 import json
 import argparse
-from datetime import datetime, timedelta, timezone
 import glob
 import pandas as pd
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-# ─── CONFIG ────────────────────────────────────────────────────────────────
 load_dotenv()  # expects GENAI_API_KEY in your .env
 genai.api_key = os.getenv("GENAI_API_KEY")
 MODEL = genai.GenerativeModel("models/gemini-2.0-flash")
@@ -36,20 +35,19 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
     )
     raw = response.text.strip()
 
-    # 1) Extract the first {...} JSON block
     match = re.search(r"\{[\s\S]*\}", raw)
     if not match:
         raise ValueError(f"Could not extract JSON from model response:\n{raw}")
     jtext = match.group()
 
-    # 2) Escape any stray backslashes not part of a valid JSON escape
+    # Escape stray backslashes not part of a valid JSON escape
     jtext = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', jtext)
 
-    # 3) Escape any un‑escaped quotes in the "text" fields
+    # Escape any un‑escaped quotes inside the caption strings
     def _escape_inner(m):
         prefix, body = m.group(1), m.group(2)
-        safe_body = body.replace('"', '\\"')
-        return f"{prefix}{safe_body}\""
+        safe = body.replace('"', '\\"')
+        return f"{prefix}{safe}\""
 
     jtext = re.sub(
         r'("text"\s*:\s*")(.+?)(")',
@@ -58,7 +56,6 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
         flags=re.DOTALL
     )
 
-    # 4) Parse the sanitized JSON
     try:
         payload = json.loads(jtext)
     except json.JSONDecodeError as e:
@@ -66,28 +63,26 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
 
     caps = payload.get("captions", []) or []
     if caps and isinstance(caps[0], dict):
-        caps = [c.get("text", "") for c in caps]
+        caps = [c["text"] for c in caps]
     return caps[:n]
 
 
 def pick_latest_trend_file(pattern="trend_rising_*.csv") -> str | None:
-    """Find the most‑recently named CSV matching our trends pattern."""
     files = glob.glob(pattern)
     if not files:
         return None
-    # sort by filename (ISO date in name makes lexicographic == chronological)
-    files.sort(reverse=True)
+    files.sort(reverse=True)  # ISO‐style dates sort lexically
     return files[0]
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate Instagram captions from a CSV of Google Trends rising terms."
+        description="Generate Instagram captions from Google Trends rising terms CSV."
     )
     parser.add_argument(
         "--input", "-i",
         help="Path to input CSV (must contain a 'term' column). "
-             "If omitted, will auto‑detect the newest trend_rising_*.csv in cwd.",
+             "If omitted will auto‑select the newest trend_rising_*.csv.",
         default=None,
     )
     parser.add_argument(
@@ -100,12 +95,11 @@ def main():
         infile = args.input
     else:
         infile = pick_latest_trend_file()
-        if infile:
-            print(f"Using file: {infile}")
-        else:
+        if not infile:
             raise FileNotFoundError(
-                "No input specified and could not find any trend_rising_*.csv in the current directory."
+                "No --input given and no trend_rising_*.csv found in working directory."
             )
+        print(f"→ Using file: {infile}")
 
     if not os.path.isfile(infile):
         raise FileNotFoundError(f"Input file not found: {infile}")
@@ -115,7 +109,7 @@ def main():
     out_file = f"captions_{basename}.csv"
 
     rows = []
-    for term in df.get("term", []):
+    for term in df["term"]:
         caps = generate_captions_for_trend(term, args.n)
         for idx, cap in enumerate(caps, start=1):
             rows.append({"term": term, "caption_id": idx, "caption": cap})
