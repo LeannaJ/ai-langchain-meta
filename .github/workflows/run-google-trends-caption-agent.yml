@@ -3,7 +3,7 @@ name: Run Google Trends Caption Agent
 # Fire when your existing “Run Google Trends” workflow finishes successfully
 on:
   workflow_run:
-    workflows: ["Run Google Trends"]
+    workflows: ["Run Google Trends Agent"]
     types:
       - completed
 
