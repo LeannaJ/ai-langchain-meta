@@ -1,0 +1,53 @@
+name: Run Google Trends Caption Agent
+
+# Fire when your existing “Run Google Trends” workflow finishes successfully
+on:
+  workflow_run:
+    workflows: ["Run Google Trends"]
+    types:
+      - completed
+
+jobs:
+  captions_for_rising_trends:
+    # only run if the trends job succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) Check out your repo
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2) Set up Python and install deps
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 3) Grab the run date from the triggering workflow
+      - name: Compute run date
+        id: pick_date
+        run: |
+          # e.g. "2025-07-23T15:42:00Z" → "2025-07-23"
+          RUN_STARTED="${{ github.event.workflow_run.run_started_at }}"
+          DAY="${RUN_STARTED%%T*}"
+          echo "date=$DAY" >> $GITHUB_OUTPUT
+
+      # 4) Generate captions on trend_rising_<date>.csv
+      - name: Generate captions for rising trends
+        run: |
+          infile="trend_rising_${{ steps.pick_date.outputs.date }}.csv"
+          echo "Using file: $infile"
+          python caption_agent.py --input "$infile" --n 12
+
+      # 5) Upload the resulting captions CSV
+      - name: Upload captions_trends_output artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: captions_trends_output
+          path: captions_trend_rising_${{ steps.pick_date.outputs.date }}.csv
