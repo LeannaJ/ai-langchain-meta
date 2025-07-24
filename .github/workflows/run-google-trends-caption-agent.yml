@@ -1,6 +1,6 @@
 name: Run Google Trends Caption Agent
 
-# Fire when your existing “Run Google Trends Agent” workflow finishes
+# Fire whenever your “Run Google Trends Agent” workflow finishes successfully
 on:
   workflow_run:
     workflows: ["Run Google Trends Agent"]
@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Check out your repo
+      # 1) Check out your code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2) Set up Python and install deps
+      # 2) Set up Python and install dependencies
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
@@ -29,33 +29,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 3) Download the rising‐terms CSV artifact
-      #    (must match the artifact name from your trends job)
+      # 3) Download the CSV artifact produced by your trends job
       - name: Download trends artifact
         uses: actions/download-artifact@v4
         with:
-          name: trend-bot-output     # ← change this to the exact `name:` your trends workflow used
+          name: trend-bot-output     # ← make sure this matches the `name:` from your Run Google Trends Agent
           path: .
 
-      # 4) Compute run date (YYYY‑MM‑DD) from the triggering workflow metadata
-      - name: Compute run date
-        id: pick_date
-        run: |
-          RUN_STARTED="${{ github.event.workflow_run.run_started_at }}"
-          # strip off the time portion
-          DAY="${RUN_STARTED%%T*}"
-          echo "date=$DAY" >> $GITHUB_OUTPUT
-
-      # 5) Generate captions on the correct file
+      # 4) Generate captions — let caption_agent.py auto‑pick the newest trend_rising_*.csv
       - name: Generate captions for rising trends
         run: |
-          infile="trend_rising_${{ steps.pick_date.outputs.date }}.csv"
-          echo "→ Using file: $infile"
-          python caption_agent.py --input "$infile" --n 12
+          python caption_agent.py --n 12
 
-      # 6) Upload the resulting captions CSV
+      # 5) Upload the resulting captions CSV
       - name: Upload captions_trends_output artifact
         uses: actions/upload-artifact@v4
         with:
           name: captions_trends_output
-          path: captions_trend_rising_${{ steps.pick_date.outputs.date }}.csv
+          path: captions_*.csv

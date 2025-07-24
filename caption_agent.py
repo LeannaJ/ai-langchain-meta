@@ -9,7 +9,6 @@ import json
 import argparse
 import glob
 import pandas as pd
-from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -35,35 +34,32 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
     )
     raw = response.text.strip()
 
+    # 1) Extract JSON block
     match = re.search(r"\{[\s\S]*\}", raw)
     if not match:
         raise ValueError(f"Could not extract JSON from model response:\n{raw}")
     jtext = match.group()
 
-    # Escape stray backslashes not part of a valid JSON escape
+    # 2) Escape stray backslashes not valid in JSON
     jtext = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', jtext)
 
-    # Escape any un‑escaped quotes inside the caption strings
+    # 3) Escape any un‑escaped quotes inside the captions
     def _escape_inner(m):
         prefix, body = m.group(1), m.group(2)
         safe = body.replace('"', '\\"')
         return f"{prefix}{safe}\""
+    jtext = re.sub(r'("text"\s*:\s*")(.+?)(")', _escape_inner, jtext, flags=re.DOTALL)
 
-    jtext = re.sub(
-        r'("text"\s*:\s*")(.+?)(")',
-        _escape_inner,
-        jtext,
-        flags=re.DOTALL
-    )
-
+    # 4) Parse
     try:
         payload = json.loads(jtext)
     except json.JSONDecodeError as e:
         raise ValueError(f"JSON parse error: {e.msg}\nSanitized JSON:\n{jtext}")
 
     caps = payload.get("captions", []) or []
+    # If the model returned objects instead of strings:
     if caps and isinstance(caps[0], dict):
-        caps = [c["text"] for c in caps]
+        caps = [c.get("text", "") for c in caps]
     return caps[:n]
 
 
@@ -71,7 +67,7 @@ def pick_latest_trend_file(pattern="trend_rising_*.csv") -> str | None:
     files = glob.glob(pattern)
     if not files:
         return None
-    files.sort(reverse=True)  # ISO‐style dates sort lexically
+    files.sort(reverse=True)  # ISO dates sort lexically
     return files[0]
 
 
@@ -86,7 +82,9 @@ def main():
         default=None,
     )
     parser.add_argument(
-        "--n", type=int, default=NUM_CAPTIONS,
+        "--n", "-n",
+        type=int,
+        default=NUM_CAPTIONS,
         help="Number of captions per term"
     )
     args = parser.parse_args()
