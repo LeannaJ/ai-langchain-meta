@@ -8,6 +8,7 @@ import re
 import json
 import argparse
 from datetime import datetime, timedelta, timezone
+import glob
 import pandas as pd
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -69,14 +70,24 @@ def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
     return caps[:n]
 
 
+def pick_latest_trend_file(pattern="trend_rising_*.csv") -> str | None:
+    """Find the most‑recently named CSV matching our trends pattern."""
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    # sort by filename (ISO date in name makes lexicographic == chronological)
+    files.sort(reverse=True)
+    return files[0]
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate Instagram captions from Google Trends rising terms CSV."
+        description="Generate Instagram captions from a CSV of Google Trends rising terms."
     )
     parser.add_argument(
         "--input", "-i",
         help="Path to input CSV (must contain a 'term' column). "
-             "Defaults to trend_rising_<yesterday>.csv",
+             "If omitted, will auto‑detect the newest trend_rising_*.csv in cwd.",
         default=None,
     )
     parser.add_argument(
@@ -88,9 +99,13 @@ def main():
     if args.input:
         infile = args.input
     else:
-        # Use yesterday's date in UTC
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
-        infile = f"trend_rising_{yesterday}.csv"
+        infile = pick_latest_trend_file()
+        if infile:
+            print(f"Using file: {infile}")
+        else:
+            raise FileNotFoundError(
+                "No input specified and could not find any trend_rising_*.csv in the current directory."
+            )
 
     if not os.path.isfile(infile):
         raise FileNotFoundError(f"Input file not found: {infile}")
