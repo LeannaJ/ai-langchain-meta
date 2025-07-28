@@ -55,6 +55,21 @@ def fetch_reddit_hot():
     latest = get_latest_csv("Scraped_Data/reddit_trend_analysis_*.csv")
     return pd.read_csv(latest)
 
+def fetch_tiktok_hashtags():
+    """Fetch latest TikTok hashtags data"""
+    latest = get_latest_csv("Scraped_Data/tiktok_hashtags_*.csv")
+    return pd.read_csv(latest)
+
+def fetch_twitter_trends():
+    """Fetch latest Twitter trends data"""
+    latest = get_latest_csv("Scraped_Data/twitter_trends_*.csv")
+    return pd.read_csv(latest)
+
+def fetch_google_trends():
+    """Fetch latest Google Trends data"""
+    latest = get_latest_csv("Scraped_Data/google_trends_*.csv")
+    return pd.read_csv(latest)
+
 youtube_tool = Tool.from_function(
     name="FetchYouTubeData",
     func=fetch_youtube_popular,
@@ -65,6 +80,105 @@ reddit_tool = Tool.from_function(
     name="FetchRedditData",
     func=fetch_reddit_hot,
     description="Fetch latest Reddit hot posts data with calculated metrics."
+)
+
+tiktok_tool = Tool.from_function(
+    name="FetchTikTokData",
+    func=fetch_tiktok_hashtags,
+    description="Fetch latest TikTok hashtags data with view counts."
+)
+
+twitter_tool = Tool.from_function(
+    name="FetchTwitterData",
+    func=fetch_twitter_trends,
+    description="Fetch latest Twitter trends data from multiple regions."
+)
+
+google_trends_tool = Tool.from_function(
+    name="FetchGoogleTrendsData",
+    func=fetch_google_trends,
+    description="Fetch latest Google Trends rising terms data with spread intensity scores."
+)
+
+# STEP 1.5: Data Preprocessing
+def preprocess_platform_data(platform_data_dict):
+    """
+    Preprocess raw data from all platforms to ensure consistent data types and formats
+    Args:
+        platform_data_dict: dict with platform names as keys and DataFrames as values
+    Returns:
+        dict with preprocessed DataFrames
+    """
+    preprocessed_data = {}
+    
+    for platform, df in platform_data_dict.items():
+        if df is None or df.empty:
+            print(f"Warning: {platform} data is empty or None")
+            preprocessed_data[platform] = df
+            continue
+            
+        print(f"Preprocessing {platform} data...")
+        
+        if platform == 'twitter':
+            # Twitter specific preprocessing
+            df_processed = df.copy()
+            
+            # Clean tweet_count: remove commas and convert to numeric
+            if 'tweet_count' in df_processed.columns:
+                df_processed['tweet_count'] = (
+                    df_processed['tweet_count']
+                    .astype(str)
+                    .str.replace(',', '')
+                    .str.replace('"', '')  # Remove quotes
+                    .str.replace("'", '')  # Remove single quotes
+                    .replace('', np.nan)   # Empty strings to NaN
+                    .astype(float)
+                )
+                print(f"  - tweet_count: {df_processed['tweet_count'].notna().sum()} valid values")
+            
+            # Clean duration: extract hours and convert to numeric
+            if 'duration' in df_processed.columns:
+                # Extract numeric part from duration strings like "10 hrs", "8 hrs"
+                df_processed['duration'] = (
+                    df_processed['duration']
+                    .astype(str)
+                    .str.extract('(\d+)')  # Extract digits
+                    .astype(float)
+                )
+                print(f"  - duration: {df_processed['duration'].notna().sum()} valid values")
+            
+            # Fill NaN values with reasonable defaults
+            df_processed['tweet_count'] = df_processed['tweet_count'].fillna(0)
+            df_processed['duration'] = df_processed['duration'].fillna(1)  # Default 1 hour
+            
+            preprocessed_data[platform] = df_processed
+            
+        elif platform == 'youtube':
+            # YouTube data is already well-structured from metrics calculation
+            preprocessed_data[platform] = df
+            
+        elif platform == 'reddit':
+            # Reddit data is already well-structured from metrics calculation
+            preprocessed_data[platform] = df
+            
+        elif platform == 'tiktok':
+            # TikTok data is already well-structured
+            preprocessed_data[platform] = df
+            
+        elif platform == 'google_trends':
+            # Google Trends data is already well-structured
+            preprocessed_data[platform] = df
+            
+        else:
+            print(f"Warning: Unknown platform {platform}, skipping preprocessing")
+            preprocessed_data[platform] = df
+    
+    return preprocessed_data
+
+preprocess_data_tool = Tool.from_function(
+    name="PreprocessPlatformData",
+    func=preprocess_platform_data,
+    description="Preprocess raw data from all platforms to ensure consistent data types and formats."
 )
 
 # STEP 2: LDA Preprocessing
@@ -148,7 +262,8 @@ def topic_modeling(texts, num_topics=200):
         id2word=dictionary,
         num_topics=num_topics,
         random_state=42,
-        passes=10,
+        passes=30,
+        iterations=100,
         alpha='auto',
         per_word_topics=True
     )
@@ -252,7 +367,269 @@ topic_labeling_tool = Tool.from_function(
     description="Label topics using LLM for natural descriptions"
 )
 
-# STEP 4: Advanced Topic Matching Functions
+def create_topic_dataframe(topics, topic_labels, topic_keywords_str, original_df, platform):
+    """
+    Convert topic modeling results to DataFrame format for Step 4
+    Args:
+        topics: topic assignments for each document
+        topic_labels: list of topic labels
+        topic_keywords_str: list of comma-joined keyword strings
+        original_df: original DataFrame with engagement metrics
+        platform: 'youtube' or 'reddit'
+    Returns:
+        DataFrame with columns: topic, video_count/doc_count, total_engagement
+    """
+    # Count documents per topic
+    topic_counts = {}
+    for topic_id in topics:
+        topic_counts[topic_id] = topic_counts.get(topic_id, 0) + 1
+    
+    # Create topic DataFrame
+    topic_data = []
+    for topic_id in range(len(topic_labels)):
+        if topic_id in topic_counts:
+            topic_data.append({
+                'topic': topic_labels[topic_id],
+                'topic_keywords': topic_keywords_str[topic_id],
+                'topic_count': topic_counts[topic_id]
+            })
+    
+    topic_df = pd.DataFrame(topic_data)
+    
+    if platform == 'youtube':
+        # Calculate total_engagement for each topic
+        topic_engagement = {}
+        for topic_id, topic_label in enumerate(topic_labels):
+            # Get documents belonging to this topic
+            topic_docs = [i for i, t in enumerate(topics) if t == topic_id]
+            
+            if topic_docs:
+                # Calculate total engagement for this topic
+                total_views = original_df.iloc[topic_docs]['View Count'].sum()
+                total_likes = original_df.iloc[topic_docs]['Like Count'].sum()
+                total_comments = original_df.iloc[topic_docs]['Comment Count'].sum()
+                total_engagement = total_views + total_likes + total_comments
+                
+                topic_engagement[topic_label] = total_engagement
+        
+        # Add engagement to topic DataFrame
+        topic_df['total_engagement'] = topic_df['topic'].map(topic_engagement)
+        topic_df['video_count'] = topic_df['topic_count']
+        
+        return topic_df[['topic', 'video_count', 'total_engagement']]
+    
+    elif platform == 'reddit':
+        # Calculate total_engagement for each topic
+        topic_engagement = {}
+        for topic_id, topic_label in enumerate(topic_labels):
+            # Get documents belonging to this topic
+            topic_docs = [i for i, t in enumerate(topics) if t == topic_id]
+            
+            if topic_docs:
+                # Calculate total engagement for this topic
+                total_ups = original_df.iloc[topic_docs]['ups'].sum()
+                total_comments = original_df.iloc[topic_docs]['num_comments'].sum()
+                total_views = original_df.iloc[topic_docs]['view_count'].sum()
+                total_engagement = total_ups + total_comments + total_views
+                
+                topic_engagement[topic_label] = total_engagement
+        
+        # Add engagement to topic DataFrame
+        topic_df['total_engagement'] = topic_df['total_engagement'] = topic_df['topic'].map(topic_engagement)
+        topic_df['doc_count'] = topic_df['topic_count']
+        
+        return topic_df[['topic', 'doc_count', 'total_engagement']]
+    
+    else:
+        raise ValueError(f"Unsupported platform: {platform}")
+
+
+
+# STEP 4: Topic Level aggregation of each platform
+def extract_platform_metrics(df, platform):
+    """
+    Extract and standardize metrics for each platform
+    Args:
+        df: DataFrame with platform-specific data
+        platform: platform name ('youtube', 'reddit', 'tiktok', 'twitter', 'google_trends')
+    Returns:
+        DataFrame with standardized columns: keyword, frequency, engagement, platform
+    """
+    if platform == 'youtube':
+        # YouTube: topic, video_count, total_engagement (from topic extraction)
+        return df[['topic', 'video_count', 'total_engagement']].rename(columns={
+            'topic': 'keyword',
+            'video_count': 'frequency',
+            'total_engagement': 'engagement'
+        }).assign(platform='YouTube')
+    
+    elif platform == 'reddit':
+        # Reddit: topic, doc_count, total_engagement (from topic extraction)
+        return df[['topic', 'doc_count', 'total_engagement']].rename(columns={
+            'topic': 'keyword',
+            'doc_count': 'frequency',
+            'total_engagement': 'engagement'
+        }).assign(platform='Reddit')
+    
+    elif platform == 'tiktok':
+        # TikTok: hashtag, views (direct trending data)
+        return df[['hashtag', 'views']].rename(columns={
+            'hashtag': 'keyword',
+            'views': 'frequency'
+        }).assign(
+            engagement=lambda x: x['frequency'],
+            platform='TikTok'
+        )
+    
+    elif platform == 'twitter':
+        # Twitter: trend, duration, tweet_count (direct trending data)
+        # duration as frequency (trend duration), tweet_count as engagement (user participation)
+        return df[['trend', 'duration', 'tweet_count']].rename(columns={
+            'trend': 'keyword',
+            'duration': 'frequency',
+            'tweet_count': 'engagement'
+        }).assign(platform='X/Twitter')
+    
+    elif platform == 'google_trends':
+        # Google Trends: term, median_gain (direct trending data)
+        return df[['term', 'median_gain']].rename(columns={
+            'term': 'keyword',
+            'median_gain': 'frequency'
+        }).assign(
+            engagement=lambda x: x['frequency'],
+            platform='Google Trends'
+        )
+    
+    else:
+        raise ValueError(f"Unsupported platform: {platform}")
+
+def consolidate_platform_data(platform_data_dict):
+    """
+    Consolidate data from all platforms into one DataFrame
+    Args:
+        platform_data_dict: dict with platform names as keys and DataFrames as values
+    Returns:
+        Consolidated DataFrame with standardized columns
+    """
+    consolidated_data = []
+    
+    for platform, df in platform_data_dict.items():
+        if df is not None and not df.empty:
+            try:
+                platform_metrics = extract_platform_metrics(df, platform)
+                consolidated_data.append(platform_metrics)
+            except Exception as e:
+                print(f"Error processing {platform}: {e}")
+                continue
+    
+    if not consolidated_data:
+        raise ValueError("No valid platform data found")
+    
+    return pd.concat(consolidated_data, ignore_index=True)
+
+# STEP 5: MinMax Scaling
+def minmax_normalize(series):
+    """Min-max normalization helper"""
+    return (series - series.min()) / (series.max() - series.min())
+
+def apply_minmax_scaling(df):
+    """
+    Apply min-max normalization per platform
+    Args:
+        df: Consolidated DataFrame with frequency and engagement columns
+    Returns:
+        DataFrame with normalized columns
+    """
+    df = df.copy()
+    
+    # Ensure metrics are numeric
+    df['frequency'] = pd.to_numeric(df['frequency'], errors='coerce')
+    df['engagement'] = pd.to_numeric(df['engagement'], errors='coerce')
+    
+    # Apply normalization per platform
+    df['frequency_norm'] = df.groupby('platform')['frequency'].transform(minmax_normalize)
+    df['engagement_norm'] = df.groupby('platform')['engagement'].transform(minmax_normalize)
+    
+    return df
+
+# STEP 6: Give Weight and Calculating TrendScore
+def get_platform_weights(media_type='video'):
+    """
+    Get platform weights based on content type
+    Args:
+        media_type: 'text', 'video', 'image', or 'equal' for equal weights
+    Returns:
+        dict of platform weights
+    """
+    weights = {
+        'equal': {
+            'Reddit': 0.2,
+            'X/Twitter': 0.2,
+            'YouTube': 0.2,
+            'TikTok': 0.2,
+            'Google Trends': 0.2
+        },
+        'text': {
+            'Reddit': 0.4,
+            'X/Twitter': 0.4,
+            'YouTube': 0.1,
+            'TikTok': 0.1,
+            'Google Trends': 0.0
+        },
+        'video': {
+            'YouTube': 0.5,
+            'TikTok': 0.4,
+            'Reddit': 0.05,
+            'X/Twitter': 0.05,
+            'Google Trends': 0.0
+        },
+        'image': {
+            'TikTok': 0.4,
+            'Reddit': 0.3,
+            'X/Twitter': 0.3,
+            'YouTube': 0.0,
+            'Google Trends': 0.0
+        }
+    }
+    
+    return weights.get(media_type, weights['video'])
+
+def calculate_trend_scores(df, media_type='video', alpha=0.4, beta=0.4):
+    """
+    Calculate weighted trend scores
+    Args:
+        df: DataFrame with normalized metrics
+        media_type: content type for weight selection
+        alpha: weight for frequency (default 0.4)
+        beta: weight for engagement (default 0.4)
+    Returns:
+        DataFrame with trend scores
+    """
+    df = df.copy()
+    
+    # Get platform weights
+    platform_weights = get_platform_weights(media_type)
+    
+    # Apply platform weights
+    df['platform_weight'] = df['platform'].map(platform_weights).fillna(0)
+    
+    # Calculate weighted trend score per platform
+    df['trend_score'] = (
+        (df['frequency_norm'] + df['engagement_norm']) / 2
+    ) * df['platform_weight']
+    
+    # Calculate per-platform score S_p = w_p * (α·F_p + β·E_p)
+    df['S_p'] = df['platform_weight'] * (
+        alpha * df['frequency_norm'] + beta * df['engagement_norm']
+    )
+    
+    # Aggregate across platforms to get final TrendScore per keyword
+    final_scores = df.groupby('keyword', as_index=False)['S_p'].sum().rename(columns={'S_p': 'TrendScore'})
+    final_scores = final_scores.sort_values('TrendScore', ascending=False)
+    
+    return df, final_scores
+
+# STEP 7: Topic Matching: Clustering & Semantic Analysis, LLM
 def calculate_keyword_similarity(keywords1, keywords2):
     """
     Calculate similarity between two keyword strings
@@ -340,31 +717,31 @@ def llm_topic_matching(topic1_label, topic1_keywords, topic2_label, topic2_keywo
         similarity = calculate_keyword_similarity(topic1_keywords, topic2_keywords)
         return similarity > 0.5  # Threshold for similarity
 
-def advanced_topic_matching(yt_topic_df, rd_topic_df, similarity_threshold=0.6, use_llm=True, api_key=None):
+def advanced_topic_matching(topic_df1, topic_df2, similarity_threshold=0.6, use_llm=True, api_key=None):
     """
     Advanced topic matching using similarity and LLM
     Args:
-        yt_topic_df: YouTube topic DataFrame
-        rd_topic_df: Reddit topic DataFrame
+        topic_df1: First platform topic DataFrame
+        topic_df2: Second platform topic DataFrame
         similarity_threshold: minimum similarity score for matching
         use_llm: whether to use LLM for final verification
         api_key: OpenAI API key for LLM matching
     Returns:
-        matched_pairs: list of (yt_idx, rd_idx) pairs
+        matched_pairs: list of (idx1, idx2) pairs
         similarity_scores: dict of similarity scores
     """
     matched_pairs = []
     similarity_scores = {}
     
-    for yt_idx, yt_row in yt_topic_df.iterrows():
-        for rd_idx, rd_row in rd_topic_df.iterrows():
+    for idx1, row1 in topic_df1.iterrows():
+        for idx2, row2 in topic_df2.iterrows():
             # Calculate keyword similarity
             kw_similarity = calculate_keyword_similarity(
-                yt_row['keywords'], rd_row['keywords']
+                row1['keywords'], row2['keywords']
             )
             
             # Store similarity score
-            pair_key = (yt_idx, rd_idx)
+            pair_key = (idx1, idx2)
             similarity_scores[pair_key] = kw_similarity
             
             # Check if similarity meets threshold
@@ -372,14 +749,14 @@ def advanced_topic_matching(yt_topic_df, rd_topic_df, similarity_threshold=0.6, 
                 # Use LLM for final verification if enabled
                 if use_llm:
                     llm_match = llm_topic_matching(
-                        yt_row['topic_label'], yt_row['keywords'],
-                        rd_row['topic_label'], rd_row['keywords'],
+                        row1['topic_label'], row1['keywords'],
+                        row2['topic_label'], row2['keywords'],
                         api_key
                     )
                     if llm_match:
-                        matched_pairs.append((yt_idx, rd_idx))
+                        matched_pairs.append((idx1, idx2))
                 else:
-                    matched_pairs.append((yt_idx, rd_idx))
+                    matched_pairs.append((idx1, idx2))
     
     return matched_pairs, similarity_scores
 
@@ -392,365 +769,6 @@ topic_similarity_tool = Tool.from_function(
 
 topic_matching_tool = Tool.from_function(
     name="TopicMatching",
-    func=lambda yt_df, rd_df, threshold=0.6: advanced_topic_matching(yt_df, rd_df, threshold),
-    description="Match topics between YouTube and Reddit using similarity and LLM"
+    func=lambda df1, df2, threshold=0.6: advanced_topic_matching(df1, df2, threshold),
+    description="Match topics between platforms using similarity and LLM"
 )
-
-# STEP 5: Topic-level aggregation of original metrics - platform-specific topic metric aggregation
-def aggregate_metrics_by_topic(df, topics, metrics_cols, agg_func='sum'):
-    """Aggregate original metrics by topic (sum or mean)"""
-    df = df.copy()
-    df['topic_id'] = topics
-    if agg_func == 'sum':
-        agg_df = df.groupby('topic_id')[metrics_cols].sum()
-    elif agg_func == 'mean':
-        agg_df = df.groupby('topic_id')[metrics_cols].mean()
-    else:
-        raise ValueError('agg_func must be "sum" or "mean"')
-    return agg_df.reset_index()
-
-# STEP 6: Topic-level metrics calculation (custom equations) - topic-specific metric calculation
-# Example metric weights for each platform
-YOUTUBE_METRIC_WEIGHTS = {
-    'View Velocity (Views/Hour)': 0.4,
-    'Like Velocity (Likes/Hour)': 0.2,
-    'Comment Velocity (Comments/Hour)': 0.2,
-    'Like-to-View Ratio (%)': 0.2
-}
-REDDIT_METRIC_WEIGHTS = {
-    'Upvote Velocity (Upvotes/Hour)': 0.4,
-    'Comment Velocity (Comments/Hour)': 0.3,
-    'Upvote-to-View Ratio (%)': 0.2,
-    'Upvote Ratio (%)': 0.1
-}
-
-def calc_topic_metrics(agg_df, platform, metric_weights):
-    """Apply custom metrics equation to aggregated topic metrics"""
-    results = []
-    for _, row in agg_df.iterrows():
-        score = calc_platform_trend_score(row, metric_weights)
-        results.append({
-            'topic_id': row['topic_id'],
-            f'{platform}_topic_score': score
-        })
-    return pd.DataFrame(results)
-
-# STEP 7: Build and merge platform-specific topic DataFrames
-def build_platform_topic_df(df, topics, topic_labels, topic_keywords_str, platform, agg_metrics_df):
-    """
-    Build a comprehensive topic DataFrame for each platform
-    Args:
-        df: Original DataFrame with content data
-        topics: topic assignments for each row
-        topic_labels: list of topic labels
-        topic_keywords_str: list of comma-joined keyword strings
-        platform: 'youtube' or 'reddit'
-        agg_metrics_df: aggregated metrics DataFrame from Step 4
-    Returns:
-        DataFrame with all topic information and metrics
-    """
-    topic_nums = np.unique(topics)
-    summary = []
-    
-    for i, topic_id in enumerate(topic_nums):
-        mask = (topics == topic_id)
-        topic_df = df[mask]
-        
-        # Get aggregated metrics for this topic
-        topic_metrics = agg_metrics_df[agg_metrics_df['topic_id'] == topic_id]
-        
-        row = {
-            'topic_num': topic_id,
-            'topic_label': topic_labels[i] if i < len(topic_labels) else f'Topic_{topic_id}',
-            'keywords': topic_keywords_str[i] if i < len(topic_keywords_str) else '',
-            'topic_count': topic_df.shape[0],
-            'is_youtube': 1 if platform == 'youtube' else 0,
-            'is_reddit': 1 if platform == 'reddit' else 0
-        }
-        
-        # Add platform-specific metrics
-        if not topic_metrics.empty:
-            for col in topic_metrics.columns:
-                if col != 'topic_id':
-                    row[f'{platform}_{col}'] = topic_metrics[col].iloc[0]
-        
-        summary.append(row)
-    
-    return pd.DataFrame(summary)
-
-def save_and_merge_topic_dfs(yt_df, rd_df, yt_topics, rd_topics, yt_labels, rd_labels, 
-                            yt_keywords_str, rd_keywords_str, yt_agg_metrics, rd_agg_metrics):
-    """Save platform-specific topic DataFrames and merge them with outer join"""
-    # Create Output directory if it doesn't exist
-    output_dir = "Output"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Build platform-specific topic DataFrames
-    yt_topic_df = build_platform_topic_df(yt_df, yt_topics, yt_labels, yt_keywords_str, 'youtube', yt_agg_metrics)
-    rd_topic_df = build_platform_topic_df(rd_df, rd_topics, rd_labels, rd_keywords_str, 'reddit', rd_agg_metrics)
-    
-    # Save individual platform DataFrames to Output folder
-    yt_output_path = os.path.join(output_dir, 'youtube_topics_aggregated.csv')
-    rd_output_path = os.path.join(output_dir, 'reddit_topics_aggregated.csv')
-    
-    yt_topic_df.to_csv(yt_output_path, index=False)
-    rd_topic_df.to_csv(rd_output_path, index=False)
-    
-    print(f"Saved YouTube topics: {len(yt_topic_df)} topics")
-    print(f"Saved Reddit topics: {len(rd_topic_df)} topics")
-    
-    # Debug: Print column names before merge
-    print(f"YouTube columns: {list(yt_topic_df.columns)}")
-    print(f"Reddit columns: {list(rd_topic_df.columns)}")
-    
-    # METHOD 1: Simple concatenation (no topic_num matching)
-    merged_df = pd.concat([yt_topic_df, rd_topic_df], ignore_index=True, sort=False)
-    
-    # Fill NaN values with 0
-    merged_df = merged_df.fillna(0)
-    
-    # Get actual column names from merged DataFrame
-    actual_columns = list(merged_df.columns)
-    print(f"Merged columns: {actual_columns}")
-    
-    # Create column order based on actual existing columns
-    column_order = []
-    
-    # 1. topic_num (always exists)
-    if 'topic_num' in actual_columns:
-        column_order.append('topic_num')
-    
-    # 2. Common topic info columns
-    topic_info_cols = [
-        'topic_label', 'keywords', 'topic_count',
-        'is_youtube', 'is_reddit'
-    ]
-    
-    for col in topic_info_cols:
-        if col in actual_columns:
-            column_order.append(col)
-    
-    # 3. YouTube metrics columns (from agg_metrics_df)
-    yt_metric_cols = [col for col in actual_columns if col.startswith('youtube_')]
-    column_order.extend(yt_metric_cols)
-    
-    # 4. Reddit metrics columns (from agg_metrics_df)
-    rd_metric_cols = [col for col in actual_columns if col.startswith('reddit_')]
-    column_order.extend(rd_metric_cols)
-    
-    # 5. Any remaining columns
-    remaining_cols = [col for col in actual_columns if col not in column_order]
-    column_order.extend(remaining_cols)
-    
-    print(f"Final column order: {column_order}")
-    
-    # Reorder DataFrame
-    merged_df = merged_df[column_order]
-    
-    # Save merged DataFrame to Output folder
-    merged_output_path = os.path.join(output_dir, 'merged_topics_aggregated.csv')
-    merged_df.to_csv(merged_output_path, index=False)
-    
-    print(f"Merged DataFrame shape: {merged_df.shape}")
-    print(f"Final columns: {list(merged_df.columns)}")
-    
-    return merged_df
-
-# Advanced merge using similarity and LLM matching
-def save_and_merge_topic_dfs_advanced(yt_df, rd_df, yt_topics, rd_topics, yt_labels, rd_labels, 
-                                     yt_keywords_str, rd_keywords_str, yt_agg_metrics, rd_agg_metrics,
-                                     similarity_threshold=0.6, use_llm=True, api_key=None):
-    """
-    Save platform-specific topic DataFrames and merge them using advanced matching
-    Args:
-        yt_df, rd_df: Original DataFrames
-        yt_topics, rd_topics: Topic assignments
-        yt_labels, rd_labels: Topic labels
-        yt_keywords_str, rd_keywords_str: Keyword strings
-        yt_agg_metrics, rd_agg_metrics: Aggregated metrics
-        similarity_threshold: Minimum similarity for matching
-        use_llm: Whether to use LLM for verification
-        api_key: OpenAI API key for LLM matching
-    Returns:
-        DataFrame with matched topics
-    """
-    # Create Output directory if it doesn't exist
-    output_dir = "Output"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Build platform-specific topic DataFrames
-    yt_topic_df = build_platform_topic_df(yt_df, yt_topics, yt_labels, yt_keywords_str, 'youtube', yt_agg_metrics)
-    rd_topic_df = build_platform_topic_df(rd_df, rd_topics, rd_labels, rd_keywords_str, 'reddit', rd_agg_metrics)
-    
-    # Save individual platform DataFrames
-    yt_output_path = os.path.join(output_dir, 'youtube_topics_aggregated.csv')
-    rd_output_path = os.path.join(output_dir, 'reddit_topics_aggregated.csv')
-    
-    yt_topic_df.to_csv(yt_output_path, index=False)
-    rd_topic_df.to_csv(rd_output_path, index=False)
-    
-    print(f"Saved YouTube topics: {len(yt_topic_df)} topics")
-    print(f"Saved Reddit topics: {len(rd_topic_df)} topics")
-    
-    # Advanced topic matching
-    print("Performing advanced topic matching...")
-    matched_pairs, similarity_scores = advanced_topic_matching(
-        yt_topic_df, rd_topic_df, similarity_threshold, use_llm, api_key
-    )
-    
-    print(f"Found {len(matched_pairs)} matched topic pairs")
-    
-    # Create merged DataFrame based on matches
-    merged_rows = []
-    
-    # Add matched topics
-    for yt_idx, rd_idx in matched_pairs:
-        yt_row = yt_topic_df.iloc[yt_idx].copy()
-        rd_row = rd_topic_df.iloc[rd_idx].copy()
-        
-        # Create merged row
-        merged_row = {
-            'topic_num': f"YT{yt_row['topic_num']}_RD{rd_row['topic_num']}",
-            'topic_label_yt': yt_row['topic_label'],
-            'topic_label_rd': rd_row['topic_label'],
-            'keywords_yt': yt_row['keywords'],
-            'keywords_rd': rd_row['keywords'],
-            'topic_count_yt': yt_row['topic_count'],
-            'topic_count_rd': rd_row['topic_count'],
-            'is_youtube': 1,
-            'is_reddit': 1,
-            'similarity_score': similarity_scores[(yt_idx, rd_idx)]
-        }
-        
-        # Add YouTube metrics
-        for col in yt_row.index:
-            if col.startswith('youtube_'):
-                merged_row[col] = yt_row[col]
-        
-        # Add Reddit metrics
-        for col in rd_row.index:
-            if col.startswith('reddit_'):
-                merged_row[col] = rd_row[col]
-        
-        merged_rows.append(merged_row)
-    
-    # Add unmatched YouTube topics
-    matched_yt_indices = {pair[0] for pair in matched_pairs}
-    for idx, row in yt_topic_df.iterrows():
-        if idx not in matched_yt_indices:
-            merged_row = {
-                'topic_num': f"YT{row['topic_num']}",
-                'topic_label_yt': row['topic_label'],
-                'topic_label_rd': '',
-                'keywords_yt': row['keywords'],
-                'keywords_rd': '',
-                'topic_count_yt': row['topic_count'],
-                'topic_count_rd': 0,
-                'is_youtube': 1,
-                'is_reddit': 0,
-                'similarity_score': 0.0
-            }
-            
-            # Add YouTube metrics
-            for col in row.index:
-                if col.startswith('youtube_'):
-                    merged_row[col] = row[col]
-            
-            merged_rows.append(merged_row)
-    
-    # Add unmatched Reddit topics
-    matched_rd_indices = {pair[1] for pair in matched_pairs}
-    for idx, row in rd_topic_df.iterrows():
-        if idx not in matched_rd_indices:
-            merged_row = {
-                'topic_num': f"RD{row['topic_num']}",
-                'topic_label_yt': '',
-                'topic_label_rd': row['topic_label'],
-                'keywords_yt': '',
-                'keywords_rd': row['keywords'],
-                'topic_count_yt': 0,
-                'topic_count_rd': row['topic_count'],
-                'is_youtube': 0,
-                'is_reddit': 1,
-                'similarity_score': 0.0
-            }
-            
-            # Add Reddit metrics
-            for col in row.index:
-                if col.startswith('reddit_'):
-                    merged_row[col] = row[col]
-            
-            merged_rows.append(merged_row)
-    
-    # Create final DataFrame
-    merged_df = pd.DataFrame(merged_rows)
-    
-    # Fill NaN values with 0
-    merged_df = merged_df.fillna(0)
-    
-    # Save merged DataFrame
-    merged_output_path = os.path.join(output_dir, 'merged_topics_advanced.csv')
-    merged_df.to_csv(merged_output_path, index=False)
-    
-    print(f"Advanced merged DataFrame shape: {merged_df.shape}")
-    print(f"Matched topics: {len(matched_pairs)}")
-    print(f"YouTube-only topics: {sum(merged_df['is_youtube'] == 1) - len(matched_pairs)}")
-    print(f"Reddit-only topics: {sum(merged_df['is_reddit'] == 1) - len(matched_pairs)}")
-    
-    return merged_df
-
-# Create tool for advanced merging
-advanced_merge_tool = Tool.from_function(
-    name="AdvancedTopicMerge",
-    func=lambda yt_df, rd_df, yt_topics, rd_topics, yt_labels, rd_labels, 
-                yt_keywords_str, rd_keywords_str, yt_agg_metrics, rd_agg_metrics: 
-           save_and_merge_topic_dfs_advanced(
-               yt_df, rd_df, yt_topics, rd_topics, yt_labels, rd_labels,
-               yt_keywords_str, rd_keywords_str, yt_agg_metrics, rd_agg_metrics
-           ),
-    description="Merge YouTube and Reddit topics using advanced similarity and LLM matching"
-)
-
-# STEP 8: Rank topics by trend score for dashboard/analysis
-def rank_topics(summary_df, score_col='Weighted Trend Score', top_n=20):
-    """Rank topics by the specified trend score column (descending)"""
-    ranked = summary_df.copy()
-    ranked = ranked.sort_values(by=score_col, ascending=False)
-    ranked['rank'] = range(1, len(ranked)+1)
-    if top_n:
-        ranked = ranked.head(top_n)
-    return ranked
-
-# STEP 9: Trend Score Calculation
-# Example platform weights by Content Type
-PLATFORM_WEIGHTS_TEXT = {'youtube': 0.4, 'reddit': 0.6}  # For text/image+text creators
-PLATFORM_WEIGHTS_VIDEO = {'youtube': 0.6, 'reddit': 0.4}  # For video creators
-
-# Calculate weighted trend score for a single platform
-def calc_platform_trend_score(row, metric_weights):
-    return sum(row.get(metric, 0) * weight for metric, weight in metric_weights.items())
-
-# Calculate final trend score with platform weights
-def calc_final_trend_score(youtube_score, reddit_score, platform_weights):
-    return youtube_score * platform_weights['youtube'] + reddit_score * platform_weights['reddit']
-
-# Main step 7 function: expects topic-level aggregation (topic_id as key)
-def calc_trend_scores_by_topic(youtube_topic_scores, reddit_topic_scores, platform_weights):
-    """Calculate trend scores by topic using metric and platform weights"""
-    # topic_scores: dict {topic_id: platform_score}
-    all_topics = set(youtube_topic_scores.keys()) | set(reddit_topic_scores.keys())
-    results = {}
-    for topic_id in all_topics:
-        yt_score = youtube_topic_scores.get(topic_id, 0)
-        rd_score = reddit_topic_scores.get(topic_id, 0)
-        # 1. Simple summation (no platform weights)
-        simple_sum = yt_score + rd_score
-        # 2. Weighted trend score (with platform weights)
-        weighted_score = yt_score * platform_weights['youtube'] + rd_score * platform_weights['reddit']
-        results[topic_id] = {
-            'YouTube Score': yt_score,
-            'Reddit Score': rd_score,
-            'Simple Summation Score': simple_sum,
-            'Weighted Trend Score': weighted_score
-        }
-    return results
