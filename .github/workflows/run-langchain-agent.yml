@@ -1,0 +1,88 @@
+name: Run Langchain Agent
+
+on:
+  workflow_dispatch:
+ # schedule:
+ #   - cron: '0 */6 * * *'  # Every 6 hours (optional)
+
+jobs:
+  langchain:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}  # GitHub PAT must be set in repo secrets
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh jq unzip
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt || pip install pandas  # fallback if no file
+
+      - name: Fetch latest trend CSVs from platform workflows
+        run: |
+          set -e
+          mkdir -p Scraped_Data
+
+          WORKFLOWS=(
+            "Run Twitter Agent"
+            "Scrape TikTok Hashtags"
+            "run reddit agent"
+            "Run YouTube Agent"
+            "Run Google Trends Agent"
+          )
+
+          REPO="${{ github.repository }}"
+
+          for WF_NAME in "${WORKFLOWS[@]}"; do
+            echo "Fetching: $WF_NAME"
+            WF_ID=$(gh api -X GET "repos/$REPO/actions/workflows" --jq ".workflows[] | select(.name==\"$WF_NAME\") | .id")
+            if [ -z "$WF_ID" ]; then
+              echo "Workflow not found: $WF_NAME"
+              continue
+            fi
+
+            RUN_ID=$(gh api -X GET "repos/$REPO/actions/workflows/$WF_ID/runs?status=success&branch=main&per_page=1" --jq ".workflow_runs[0].id")
+            if [ -z "$RUN_ID" ]; then
+              echo "No successful run for: $WF_NAME"
+              continue
+            fi
+
+            ARTIFACT_JSON=$(gh api -X GET "repos/$REPO/actions/runs/$RUN_ID/artifacts")
+            ARTIFACT_ID=$(echo "$ARTIFACT_JSON" | jq ".artifacts[0].id")
+
+            if [ -z "$ARTIFACT_ID" ] || [ "$ARTIFACT_ID" == "null" ]; then
+              echo "No artifacts found for: $WF_NAME"
+              continue
+            fi
+
+            echo "Downloading artifact ID: $ARTIFACT_ID"
+            gh api -X GET -H "Accept: application/vnd.github+json" \
+              "repos/$REPO/actions/artifacts/$ARTIFACT_ID/zip" > "artifact.zip"
+            unzip -o artifact.zip -d Scraped_Data/
+            rm artifact.zip
+          done
+
+      - name: Run LangChain Trend Agent
+        run: |
+          python langchain_workflow_updated_0723.py
+
+      - name: Upload Output CSV (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: langchain-output
+          path: |
+            output/
+            results/
+            Scraped_Data/
+          if-no-files-found: ignore
