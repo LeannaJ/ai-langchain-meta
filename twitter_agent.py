@@ -5,16 +5,16 @@ import time
 from playwright.sync_api import sync_playwright, TimeoutError
 
 TOP_COUNTRIES = [
-    "united-states",
-    "india",
-    "brazil",
-    "united-kingdom",
-    "indonesia",
-    "mexico",
-    "philippines",
-    "canada",
-    "germany",
-    "japan"
+    "united-states"#,
+    # "india",
+    # "brazil",
+    # "united-kingdom",
+    # "indonesia",
+    # "mexico",
+    # "philippines",
+    # "canada",
+    # "germany",
+    # "japan"
 ]
 
 def fetch_trends(region):
