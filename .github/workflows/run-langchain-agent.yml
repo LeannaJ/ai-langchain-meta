@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r requirements.txt || pip install pandas  # fallback if no file
+          pip install pandas nltk
 
       - name: Fetch latest trend CSVs from platform workflows
         run: |
