@@ -75,7 +75,7 @@ jobs:
 
       - name: Run LangChain Trend Agent
         run: |
-          python langchain_workflow_updated_0723.py
+          python langchain_workflow.py
 
       - name: Upload Output CSV (if any)
         uses: actions/upload-artifact@v4
