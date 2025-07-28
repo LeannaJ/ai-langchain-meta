@@ -1,0 +1,43 @@
+name: Run Input Caption Agent
+
+# Triggers: On push to main, or manual dispatch with a topic input
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Trending topic to generate captions for (e.g., Luigi Mangione)'
+        required: true
+        default: 'Luigi Mangione'
+
+jobs:
+  generate-captions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'  # Adjust to your preferred version
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Assumes requirements.txt has abacusai
+      
+      - name: Run Caption Agent
+        env:
+          ABACUSAPIKEY: ${{ secrets.ABACUSAPIKEY }}  # Your API key secret
+        run: |
+          # Pass the input topic to the script (update caption_agent.py if needed to accept args)
+          python caption_agent.py --topic "${{ github.event.inputs.topic || 'default_topic' }}"
+      
+      - name: Archive Output (Optional)
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: caption-output
+          path: output.csv  # If your script saves to a file, archive it here

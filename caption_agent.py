@@ -1,120 +1,60 @@
 #!/usr/bin/env python3
-"""
-caption_agent.py – Generate Instagram‑style captions from a CSV of Google Trends rising terms.
-"""
+# caption_agent.py - Updated to call Abacus.AI Intelligent Caption Generator Workflow
 
 import os
-import re
-import json
+from abacusai import ApiClient
 import argparse
-import glob
-import pandas as pd
-from dotenv import load_dotenv
-import google.generativeai as genai
 
-load_dotenv()  # expects GENAI_API_KEY in your .env
-genai.api_key = os.getenv("GENAI_API_KEY")
-MODEL = genai.GenerativeModel("models/gemini-2.0-flash")
-
-PROMPT = """
-Generate 6 catchy and 6 humorous Instagram post captions for the topic "{trend}".
-Each caption should be ≤200 characters, include 2–3 relevant hashtags, and be written
-in an upbeat, engaging style. Output JSON exactly as:
-{{"captions": ["caption1", "caption2", …, "caption12"]}}
-"""
-
-NUM_CAPTIONS = 12
-
-
-def generate_captions_for_trend(trend: str, n: int = NUM_CAPTIONS) -> list[str]:
-    response = MODEL.generate_content(
-        PROMPT.format(trend=trend),
-        generation_config={"temperature": 0.7, "max_output_tokens": 2048},
-        safety_settings=[],
+def run_caption_workflow(topic, workflow_id='586927fa'):
+    """
+    Calls the Abacus.AI AI Workflow 'Intelligent Caption Generator' to generate viral Instagram captions.
+    
+    Args:
+        topic (str): The trending topic (e.g., "Luigi Mangione").
+        workflow_id (str): The ID of the workflow (default: 586927fa).
+    
+    Returns:
+        dict: The workflow's output (e.g., {'summary': ..., 'sentiment': ..., 'captions': [...]})
+    """
+    # Load API key from environment (GitHub Secret or local .env)
+    api_key = os.getenv('ABACUSAPIKEY')
+    if not api_key:
+        raise ValueError("ABACUSAPIKEY not set in environment.")
+    
+    client = ApiClient(api_key=api_key)
+    
+    # Prepare input for the workflow
+    inputs = {'topic': topic}  # Matches our prompt; adjust if your workflow needs more params
+    
+    # Run the workflow (similar to run_agent, but for workflows)
+    response = client.run_workflow(
+        workflow_id=workflow_id,
+        inputs=inputs,
+        timeout=300  # For research steps
     )
-    raw = response.text.strip()
+    
+    return response
 
-    # 1) Extract JSON block
-    match = re.search(r"\{[\s\S]*\}", raw)
-    if not match:
-        raise ValueError(f"Could not extract JSON from model response:\n{raw}")
-    jtext = match.group()
-
-    # 2) Escape stray backslashes not valid in JSON
-    jtext = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', jtext)
-
-    # 3) Escape any un‑escaped quotes inside the captions
-    def _escape_inner(m):
-        prefix, body = m.group(1), m.group(2)
-        safe = body.replace('"', '\\"')
-        return f"{prefix}{safe}\""
-    jtext = re.sub(r'("text"\s*:\s*")(.+?)(")', _escape_inner, jtext, flags=re.DOTALL)
-
-    # 4) Parse
+# Example usage (integrate into trend_bot.py or tests)
+if __name__ == "__main__":
+    topic = "Luigi Mangione"  # Test topic
     try:
-        payload = json.loads(jtext)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"JSON parse error: {e.msg}\nSanitized JSON:\n{jtext}")
-
-    caps = payload.get("captions", []) or []
-    # If the model returned objects instead of strings:
-    if caps and isinstance(caps[0], dict):
-        caps = [c.get("text", "") for c in caps]
-    return caps[:n]
-
-
-def pick_latest_trend_file(pattern="trend_rising_*.csv") -> str | None:
-    files = glob.glob(pattern)
-    if not files:
-        return None
-    files.sort(reverse=True)  # ISO dates sort lexically
-    return files[0]
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Generate Instagram captions from Google Trends rising terms CSV."
-    )
-    parser.add_argument(
-        "--input", "-i",
-        help="Path to input CSV (must contain a 'term' column). "
-             "If omitted will auto‑select the newest trend_rising_*.csv.",
-        default=None,
-    )
-    parser.add_argument(
-        "--n", "-n",
-        type=int,
-        default=NUM_CAPTIONS,
-        help="Number of captions per term"
-    )
-    args = parser.parse_args()
-
-    if args.input:
-        infile = args.input
-    else:
-        infile = pick_latest_trend_file()
-        if not infile:
-            raise FileNotFoundError(
-                "No --input given and no trend_rising_*.csv found in working directory."
-            )
-        print(f"→ Using file: {infile}")
-
-    if not os.path.isfile(infile):
-        raise FileNotFoundError(f"Input file not found: {infile}")
-
-    df = pd.read_csv(infile)
-    basename = os.path.splitext(os.path.basename(infile))[0]
-    out_file = f"captions_{basename}.csv"
-
-    rows = []
-    for term in df["term"]:
-        caps = generate_captions_for_trend(term, args.n)
-        for idx, cap in enumerate(caps, start=1):
-            rows.append({"term": term, "caption_id": idx, "caption": cap})
-
-    pd.DataFrame(rows).to_csv(out_file, index=False)
-    print(f"[✓] Wrote {len(rows)} captions to {out_file}")
-
+        result = run_caption_workflow(topic)
+        print("Workflow Output:")
+        print(result)  # Should print summary, sentiment, captions
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Generate viral captions for a topic.")
+    parser.add_argument('--topic', type=str, default="Luigi Mangione", help="Trending topic")
+    args = parser.parse_args()
+    
+    try:
+        result = run_caption_workflow(args.topic)
+        print("Workflow Output:")
+        print(result)
+        # Optional: Save to CSV
+        # import json; with open('output.json', 'w') as f: json.dump(result, f)
+    except Exception as e:
+        print(f"Error: {e}")
