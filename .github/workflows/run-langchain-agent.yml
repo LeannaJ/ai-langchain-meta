@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install pandas nltk
+          pip install pandas nltk isodate gensim openai langchain
 
       - name: Fetch latest trend CSVs from platform workflows
         run: |
