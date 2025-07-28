@@ -1,4 +1,4 @@
-name: Scrape TikTok Hashtags
+name: Scrape TikTok Hashtags Test
 
 on:
  # schedule:
