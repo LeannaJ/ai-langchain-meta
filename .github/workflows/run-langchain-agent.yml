@@ -78,12 +78,9 @@ jobs:
         run: |
           python LangChain_Workflow/langchain_workflow.py
 
-      - name: Upload Output CSV (if any)
+      - name: Upload LangChain Output
         uses: actions/upload-artifact@v4
         with:
-          name: langchain-output
-          path: |
-            output/
-            results/
-            Scraped_Data/
-          if-no-files-found: ignore
+          name: final-topic-matching-output
+          path: final_matched_topics.csv
+
