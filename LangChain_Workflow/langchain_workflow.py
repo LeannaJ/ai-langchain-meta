@@ -46,22 +46,22 @@ def fetch_youtube_popular():
 
 def fetch_reddit_hot():
     """Fetch latest Reddit trend analysis data with metrics"""
-    latest = get_latest_csv("Scraped_Data/reddit_trend_analysis_*.csv")
+    latest = get_latest_csv("Scraped_Data/reddit_hot_posts*.csv")
     return pd.read_csv(latest)
 
 def fetch_tiktok_hashtags():
     """Fetch latest TikTok hashtags data"""
-    latest = get_latest_csv("Scraped_Data/tiktok_hashtags_*.csv")
+    latest = get_latest_csv("Scraped_Data/tiktok_hashtags*.csv")
     return pd.read_csv(latest)
 
 def fetch_twitter_trends():
     """Fetch latest Twitter trends data"""
-    latest = get_latest_csv("Scraped_Data/twitter_trends_*.csv")
+    latest = get_latest_csv("Scraped_Data/trends-output*.csv")
     return pd.read_csv(latest)
 
 def fetch_google_trends():
     """Fetch latest Google Trends rising data"""
-    latest = get_latest_csv("Scraped_Data/google_trends_rising_*.csv")
+    latest = get_latest_csv("Scraped_Data/trend_rising_*.csv")
     return pd.read_csv(latest)
 
 youtube_tool = Tool.from_function(
