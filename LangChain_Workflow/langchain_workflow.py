@@ -56,7 +56,7 @@ def fetch_tiktok_hashtags():
 
 def fetch_twitter_trends():
     """Fetch latest Twitter trends data"""
-    latest = get_latest_csv("Scraped_Data/trends-output*.csv")
+    latest = get_latest_csv("Scraped_Data/trends_output*.csv")
     return pd.read_csv(latest)
 
 def fetch_google_trends():
