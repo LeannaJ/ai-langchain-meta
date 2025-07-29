@@ -78,9 +78,8 @@ jobs:
         run: |
           python LangChain_Workflow/langchain_workflow.py
 
-      - name: Upload LangChain Output
+      - name: Upload LangChain Outputs
         uses: actions/upload-artifact@v4
         with:
-          name: final-topic-matching-output
-          path: final_matched_topics.csv
-
+          name: langchain-final-outputs
+          path: Output/*.csv
