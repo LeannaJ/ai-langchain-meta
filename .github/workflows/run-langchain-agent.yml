@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}  # GitHub PAT must be set in repo secrets
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # OpenAI API key must be set in repo secrets
 
     steps:
       - name: Checkout repository
