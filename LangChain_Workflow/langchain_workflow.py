@@ -4,6 +4,7 @@
 LangChain Workflow for Multi-Platform Trend Analysis
 A comprehensive pipeline for collecting, processing, and analyzing trending content
 from YouTube and Reddit using LDA topic modeling and LangChain tools.
+Updated version with topic grouping functionality.
 """
 
 import pandas as pd
@@ -21,20 +22,13 @@ from langchain.tools import Tool
 from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+from collections import defaultdict
+from difflib import SequenceMatcher
+from dotenv import load_dotenv
+from datetime import datetime
 
-# Download required NLTK data
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet')
-
-# Initialize NLTK components
-stop_words = set(stopwords.words('english'))
-lemmatizer = WordNetLemmatizer()
+# Load environment variables from .env file
+load_dotenv()
 
 # STEP 1: Data Collection Tools
 def get_latest_csv(pattern):
@@ -66,8 +60,8 @@ def fetch_twitter_trends():
     return pd.read_csv(latest)
 
 def fetch_google_trends():
-    """Fetch latest Google Trends data"""
-    latest = get_latest_csv("Scraped_Data/google_trends_*.csv")
+    """Fetch latest Google Trends rising data"""
+    latest = get_latest_csv("Scraped_Data/google_trends_rising_*.csv")
     return pd.read_csv(latest)
 
 youtube_tool = Tool.from_function(
@@ -100,7 +94,7 @@ google_trends_tool = Tool.from_function(
     description="Fetch latest Google Trends rising terms data with spread intensity scores."
 )
 
-# STEP 1.5: Data Preprocessing
+# STEP 2: Data Preprocessing
 def preprocess_platform_data(platform_data_dict):
     """
     Preprocess raw data from all platforms to ensure consistent data types and formats
@@ -181,12 +175,34 @@ preprocess_data_tool = Tool.from_function(
     description="Preprocess raw data from all platforms to ensure consistent data types and formats."
 )
 
-# STEP 2: LDA Preprocessing
+# STEP 3: LDA Topic Modeling for YouTube and Reddit 
+# 3.1: LDA Preprocessing
+def initialize_nltk_components():
+    """Initialize NLTK components for LDA preprocessing"""
+    # Download required NLTK data
+    try:
+        nltk.data.find('corpora/stopwords')
+    except LookupError:
+        nltk.download('stopwords')
+    try:
+        nltk.data.find('corpora/wordnet')
+    except LookupError:
+        nltk.download('wordnet')
+
+    # Initialize NLTK components
+    stop_words = set(stopwords.words('english'))
+    lemmatizer = WordNetLemmatizer()
+    
+    return stop_words, lemmatizer
+
 def preprocess_text(df, text_cols):
     """
     LDA-style preprocessing: lowercase, remove special chars, normalize whitespace, 
     remove stopwords, tokenize, lemmatize, and filter out meaningless words
     """
+    # Initialize NLTK components
+    stop_words, lemmatizer = initialize_nltk_components()
+    
     # Extended stopwords and meaningless words
     extended_stopwords = {
         'http', 'https', 'www', 'com', 'org', 'net', 'edu', 'gov', 'mil', 'int',
@@ -233,7 +249,7 @@ preprocess_tool = Tool.from_function(
     description="Preprocess text columns: lowercase, remove special chars, normalize whitespace, remove stopwords, tokenize, lemmatize."
 )
 
-# STEP 3: LDA Topic Modeling
+# 3.2: LDA Topic Modeling
 def topic_modeling(texts, num_topics=200):
     """
     LDA Topic Modeling using gensim
@@ -303,7 +319,7 @@ topic_modeling_tool = Tool.from_function(
     description="Perform LDA topic modeling on preprocessed texts and return topics, model, labels, and keywords"
 )
 
-# STEP 3.5: LLM-based Topic Labeling
+# 3.3: LLM-based Topic Labeling
 def create_topic_labeling_chain():
     """Create LLM chain for natural topic labeling"""
     llm = OpenAI(temperature=0.3)  # Lower temperature for more consistent labels
@@ -360,7 +376,6 @@ def label_topics_with_llm(topic_keywords_str, topic_counts, api_key=None):
                 for keywords in topic_keywords_str]
 
 topic_labeling_tool_func = label_topics_with_llm
-
 topic_labeling_tool = Tool.from_function(
     name="TopicLabeling",
     func=topic_labeling_tool_func,
@@ -552,7 +567,7 @@ def apply_minmax_scaling(df):
     
     return df
 
-# STEP 6: Give Weight and Calculating TrendScore
+# STEP 6: Calculate Trend Scores (Media Type Specific)
 def get_platform_weights(media_type='video'):
     """
     Get platform weights based on content type
@@ -629,146 +644,837 @@ def calculate_trend_scores(df, media_type='video', alpha=0.4, beta=0.4):
     
     return df, final_scores
 
-# STEP 7: Topic Matching: Clustering & Semantic Analysis, LLM
+def save_consolidated_scores(df_with_scores, media_type='equal', workflow_timestamp=None, output_filename=None):
+    """
+    Save consolidated scores (before cross-platform bonus) to CSV file
+    Args:
+        df_with_scores: DataFrame with trend scores calculated
+        media_type: content type for filename ('equal', 'video', 'text', 'image')
+        workflow_timestamp: timestamp for consistent file naming
+        output_filename: optional filename, will auto-generate if None
+    Returns:
+        filepath of saved CSV
+    """
+    if output_filename is None:
+        if workflow_timestamp:
+            if media_type == 'equal':
+                output_filename = f"consolidated_scores_{workflow_timestamp}.csv"
+            else:
+                output_filename = f"consolidated_scores_{media_type}_{workflow_timestamp}.csv"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+            if media_type == 'equal':
+                output_filename = f"consolidated_scores_{timestamp}.csv"
+            else:
+                output_filename = f"consolidated_scores_{media_type}_{timestamp}.csv"
+    
+    # Create output directory
+    output_dir = "Output"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, output_filename)
+    
+    # Save to CSV
+    df_with_scores.to_csv(filepath, index=False)
+    print(f"Consolidated scores exported to '{filepath}'")
+    print(f"Total records: {len(df_with_scores)}")
+    
+    return filepath
+
+# STEP 7: Topic Clustering & Similarity Analysis (Common Processing)
 def calculate_keyword_similarity(keywords1, keywords2):
     """
-    Calculate similarity between two keyword strings
+    Calculate similarity between two keyword strings using Jaccard and String similarity
     Args:
-        keywords1, keywords2: comma-separated keyword strings
+        keywords1: first keyword string
+        keywords2: second keyword string
     Returns:
         similarity score (0-1)
     """
-    from difflib import SequenceMatcher
-    
-    # Convert to sets for better comparison
-    kw1_set = set([k.strip().lower() for k in keywords1.split(',') if k.strip()])
-    kw2_set = set([k.strip().lower() for k in keywords2.split(',') if k.strip()])
-    
-    if not kw1_set or not kw2_set:
-        return 0.0
+    # Convert to sets of words
+    set1 = set(keywords1.lower().split())
+    set2 = set(keywords2.lower().split())
     
     # Jaccard similarity
-    intersection = len(kw1_set & kw2_set)
-    union = len(kw1_set | kw2_set)
-    jaccard_sim = intersection / union if union > 0 else 0.0
+    if len(set1.union(set2)) == 0:
+        jaccard_sim = 0
+    else:
+        jaccard_sim = len(set1.intersection(set2)) / len(set1.union(set2))
     
-    # String similarity for partial matches
-    str1 = ' '.join(sorted(kw1_set))
-    str2 = ' '.join(sorted(kw2_set))
-    string_sim = SequenceMatcher(None, str1, str2).ratio()
+    # String similarity using SequenceMatcher
+    string_sim = SequenceMatcher(None, keywords1.lower(), keywords2.lower()).ratio()
     
     # Combined similarity (weighted average)
-    combined_sim = 0.7 * jaccard_sim + 0.3 * string_sim
+    combined_sim = 0.6 * jaccard_sim + 0.4 * string_sim
     
     return combined_sim
 
-def create_topic_matching_chain():
-    """Create LLM chain for topic matching"""
-    llm = OpenAI(temperature=0.1)  # Very low temperature for consistent matching
+def cluster_similar_topics(file_path, lambda_val=0.1, similarity_threshold=0.6):
+    """
+    Cluster similar topics and calculate platform boost scores
+    
+    Parameters:
+    - file_path: path to CSV file
+    - lambda_val: lambda value for platform boost calculation
+    - similarity_threshold: threshold for considering topics similar (0-1)
+
+    Returns:
+    - List of dictionaries with clustered results
+    - DataFrame with original data + cross-platform bonus and final scores
+    """
+    # Load data
+    df = pd.read_csv(file_path)
+    
+    # Create a copy for final output
+    final_df = df.copy()
+    
+    # Use the 'keyword' column for clustering
+    topics = df['keyword'].tolist()
+    groups = []
+    assigned = [False] * len(topics)
+
+    # Group similar topics
+    for i, topic in enumerate(topics):
+        if assigned[i]:
+            continue
+        group = [i]
+        assigned[i] = True
+
+        # Find similar topics using the more sophisticated similarity calculation
+        for j in range(i+1, len(topics)):
+            if not assigned[j]:
+                # Use calculate_keyword_similarity for better accuracy
+                similarity = calculate_keyword_similarity(topic, topics[j])
+                if similarity >= similarity_threshold:
+                    group.append(j)
+                    assigned[j] = True
+        groups.append(group)
+
+    # Aggregate scores and platforms for each group
+    results = []
+    group_counter = 0
+    
+    for group in groups:
+        group_keywords = [topics[idx] for idx in group]
+        group_df = df.iloc[group]
+
+        # Sum the S_p scores
+        sum_sp = group_df['S_p'].sum()
+
+        # Get unique platforms
+        platforms = set(group_df['platform'])
+
+        # Calculate platform boost: λ × (number of platforms - 1)
+        platform_boost = lambda_val * (len(platforms) - 1)
+
+        # Final score = Sum of S_p + Platform Boost
+        final_score = sum_sp + platform_boost
+
+        # Add cross-platform bonus and final score to the original dataframe
+        for idx in group:
+            final_df.loc[idx, 'cross_platform_bonus'] = platform_boost
+            final_df.loc[idx, 'final_trend_score'] = final_score
+            final_df.loc[idx, 'group_id'] = group_counter
+            final_df.loc[idx, 'group_name'] = group_keywords[0]
+
+        results.append({
+            'group_name': group_keywords[0],  # Use first keyword as group name
+            'group_keywords': group_keywords,
+            'keyword_count': len(group_keywords),
+            'sum_S_p': sum_sp,
+            'platforms': list(platforms),
+            'platform_count': len(platforms),
+            'platform_boost': platform_boost,
+            'final_score': final_score
+        })
+        
+        group_counter += 1
+
+    # Fill NaN values for ungrouped items (if any)
+    final_df['cross_platform_bonus'] = final_df['cross_platform_bonus'].fillna(0)
+    final_df['final_trend_score'] = final_df['final_trend_score'].fillna(final_df['S_p'])
+    final_df['group_id'] = final_df['group_id'].fillna(-1)  # -1 for ungrouped
+    final_df['group_name'] = final_df['group_name'].fillna(final_df['keyword'])
+
+    return results, final_df
+
+def save_final_trend_scores(final_df, media_type='equal', workflow_timestamp=None, output_filename=None):
+    """
+    Save final trend scores with cross-platform bonus to CSV file
+    Args:
+        final_df: DataFrame with original data + cross-platform bonus and final scores
+        media_type: content type for filename ('equal', 'video', 'text', 'image')
+        workflow_timestamp: timestamp for consistent file naming
+        output_filename: optional filename, will auto-generate if None
+    Returns:
+        filepath of saved CSV
+    """
+    if output_filename is None:
+        if workflow_timestamp:
+            if media_type == 'equal':
+                output_filename = f"consolidated_scores_w_crossbonus_{workflow_timestamp}.csv"
+            else:
+                output_filename = f"consolidated_scores_w_crossbonus_{media_type}_{workflow_timestamp}.csv"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+            if media_type == 'equal':
+                output_filename = f"consolidated_scores_w_crossbonus_{timestamp}.csv"
+            else:
+                output_filename = f"consolidated_scores_w_crossbonus_{media_type}_{timestamp}.csv"
+    
+    # Create output directory
+    output_dir = "Output"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, output_filename)
+    
+    # Save to CSV
+    final_df.to_csv(filepath, index=False)
+    print(f"Final trend scores exported to '{filepath}'")
+    print(f"Total records: {len(final_df)}")
+    
+    return filepath
+
+# STEP 8: Final Grouped Results Generation (Common Processing)
+def save_grouped_results(results, media_type='equal', workflow_timestamp=None, output_filename=None):
+    """
+    Save grouped results to CSV file
+    Args:
+        results: list of grouped topic dictionaries
+        media_type: content type for filename ('equal', 'video', 'text', 'image')
+        workflow_timestamp: timestamp for consistent file naming
+        output_filename: optional filename, will auto-generate if None
+    Returns:
+        filepath of saved CSV
+    """
+    if output_filename is None:
+        if workflow_timestamp:
+            if media_type == 'equal':
+                output_filename = f"final_grouped_trend_scores_{workflow_timestamp}.csv"
+            else:
+                output_filename = f"final_grouped_trend_scores_{media_type}_{workflow_timestamp}.csv"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+            if media_type == 'equal':
+                output_filename = f"final_grouped_trend_scores_{timestamp}.csv"
+            else:
+                output_filename = f"final_grouped_trend_scores_{media_type}_{timestamp}.csv"
+    
+    # Create output directory
+    output_dir = "Output"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, output_filename)
+    
+    # Convert results to DataFrame
+    df = pd.DataFrame(results)
+    
+    # Save to CSV
+    df.to_csv(filepath, index=False)
+    print(f"Grouped results exported to '{filepath}'")
+    print(f"Total groups created: {len(df)}")
+    
+    return filepath
+
+def generate_final_output(clustered_results, media_type='equal', workflow_timestamp=None, output_filename=None):
+    """
+    Generate final grouped output with summary statistics
+    Args:
+        clustered_results: list of clustered topic dictionaries
+        media_type: content type for filename ('equal', 'video', 'text', 'image')
+        workflow_timestamp: timestamp for consistent file naming
+        output_filename: optional filename, will auto-generate if None
+    Returns:
+        dict with filepath and summary statistics
+    """
+    # Save grouped results
+    filepath = save_grouped_results(clustered_results, media_type, workflow_timestamp, output_filename)
+    
+    # Calculate summary statistics
+    total_groups = len(clustered_results)
+    total_keywords = sum(result['keyword_count'] for result in clustered_results)
+    avg_platform_count = sum(result['platform_count'] for result in clustered_results) / total_groups if total_groups > 0 else 0
+    
+    # Get top 10 results
+    top_results = sorted(clustered_results, key=lambda x: x['final_score'], reverse=True)[:10]
+    
+    # Print summary
+    print(f"\n=== Top 10 Grouped Topics ===")
+    for i, result in enumerate(top_results, 1):
+        print(f"{i}. {result['group_name']}")
+        print(f"   Keywords: {result['keyword_count']}")
+        print(f"   Platforms: {', '.join(result['platforms'])}")
+        print(f"   Final Score: {result['final_score']:.4f}\n")
+    
+    print(f"=== Summary ===")
+    print(f"Total topic groups: {total_groups}")
+    print(f"Total keywords processed: {total_keywords}")
+    print(f"Average platforms per group: {avg_platform_count:.2f}")
+    print(f"Results saved to: {filepath}")
+    
+    return {
+        'filepath': filepath,
+        'total_groups': total_groups,
+        'total_keywords': total_keywords,
+        'avg_platform_count': avg_platform_count,
+        'top_results': top_results
+    }
+
+# STEP 9: Category Classification (Common Processing)
+def create_category_classification_chain():
+    """Create LLM chain for topic category classification"""
+    llm = OpenAI(temperature=0.1)  # Low temperature for consistent categorization
     
     prompt_template = PromptTemplate(
-        input_variables=["topic1_label", "topic1_keywords", "topic2_label", "topic2_keywords"],
+        input_variables=["topic", "categories"],
         template="""
-        Compare these two topics and determine if they represent the same or very similar subject matter.
+        Classify the following topic into the most appropriate category from the given options.
         
-        Topic 1:
-        - Label: {topic1_label}
-        - Keywords: {topic1_keywords}
+        Topic: {topic}
         
-        Topic 2:
-        - Label: {topic2_label}
-        - Keywords: {topic2_keywords}
+        Available categories:
+        {categories}
         
-        Answer with ONLY "YES" if these topics are the same or very similar, or "NO" if they are different topics.
-        Consider synonyms, related concepts, and different ways to express the same idea.
-        """
+        Instructions:
+        - Choose the SINGLE most appropriate category
+        - Consider the main theme and context of the topic
+        - If a topic could fit multiple categories, choose the most dominant one
+        - Respond with ONLY the category name, nothing else
+        
+        Category: """
     )
     
     return LLMChain(llm=llm, prompt=prompt_template)
 
-def llm_topic_matching(topic1_label, topic1_keywords, topic2_label, topic2_keywords, api_key=None):
+def classify_topic_category(topic, api_key=None):
     """
-    Use LLM to determine if two topics are the same
+    Classify a single topic into a predefined category using LLM
     Args:
-        topic1_label, topic1_keywords: first topic info
-        topic2_label, topic2_keywords: second topic info
-        api_key: OpenAI API key (optional)
+        topic: topic keyword/label to classify
+        api_key: OpenAI API key (optional, can be set via environment)
     Returns:
-        True if topics match, False otherwise
+        category: classified category name
     """
     if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+        os.environ['OPENAI_API_KEY'] = api_key
     
     try:
-        chain = create_topic_matching_chain()
-        result = chain.run(
-            topic1_label=topic1_label,
-            topic1_keywords=topic1_keywords,
-            topic2_label=topic2_label,
-            topic2_keywords=topic2_keywords
-        )
+        # Define categories
+        categories = [
+            "Beauty & Fashion",
+            "Technology & Innovation", 
+            "Lifestyle & Health",
+            "News & Politics",
+            "Sports & Fitness",
+            "Education & Learning",
+            "Business & Finance",
+            "Entertainment & Media"
+        ]
         
-        # Parse result
-        result = result.strip().upper()
-        return result == "YES"
+        # Create category list for prompt
+        categories_text = "\n".join([f"- {cat}" for cat in categories])
+        
+        # Create and run classification chain
+        chain = create_category_classification_chain()
+        result = chain.run(topic=topic, categories=categories_text)
+        
+        # Clean and validate result
+        category = result.strip()
+        
+        # Validate that result is one of the predefined categories
+        if category not in categories:
+            # If LLM returned something unexpected, try to match closest category
+            category = match_closest_category(category, categories)
+        
+        return category
+        
     except Exception as e:
-        print(f"LLM topic matching failed: {e}")
-        # Fallback to keyword similarity
-        similarity = calculate_keyword_similarity(topic1_keywords, topic2_keywords)
-        return similarity > 0.5  # Threshold for similarity
+        print(f"Error classifying topic '{topic}': {str(e)}")
+        return "Entertainment & Media"  # Default fallback category
 
-def advanced_topic_matching(topic_df1, topic_df2, similarity_threshold=0.6, use_llm=True, api_key=None):
+def match_closest_category(llm_result, categories):
     """
-    Advanced topic matching using similarity and LLM
+    Match LLM result to closest predefined category using similarity
     Args:
-        topic_df1: First platform topic DataFrame
-        topic_df2: Second platform topic DataFrame
-        similarity_threshold: minimum similarity score for matching
-        use_llm: whether to use LLM for final verification
-        api_key: OpenAI API key for LLM matching
+        llm_result: result from LLM
+        categories: list of predefined categories
     Returns:
-        matched_pairs: list of (idx1, idx2) pairs
-        similarity_scores: dict of similarity scores
+        closest_category: best matching category
     """
-    matched_pairs = []
-    similarity_scores = {}
+    from difflib import SequenceMatcher
     
-    for idx1, row1 in topic_df1.iterrows():
-        for idx2, row2 in topic_df2.iterrows():
-            # Calculate keyword similarity
-            kw_similarity = calculate_keyword_similarity(
-                row1['keywords'], row2['keywords']
-            )
-            
-            # Store similarity score
-            pair_key = (idx1, idx2)
-            similarity_scores[pair_key] = kw_similarity
-            
-            # Check if similarity meets threshold
-            if kw_similarity >= similarity_threshold:
-                # Use LLM for final verification if enabled
-                if use_llm:
-                    llm_match = llm_topic_matching(
-                        row1['topic_label'], row1['keywords'],
-                        row2['topic_label'], row2['keywords'],
-                        api_key
-                    )
-                    if llm_match:
-                        matched_pairs.append((idx1, idx2))
-                else:
-                    matched_pairs.append((idx1, idx2))
+    best_match = "Entertainment & Media"  # Default
+    best_score = 0
     
-    return matched_pairs, similarity_scores
+    for category in categories:
+        # Calculate similarity between LLM result and category
+        similarity = SequenceMatcher(None, llm_result.lower(), category.lower()).ratio()
+        if similarity > best_score:
+            best_score = similarity
+            best_match = category
+    
+    return best_match
 
-# Create tools for advanced matching
-topic_similarity_tool = Tool.from_function(
-    name="TopicSimilarity",
-    func=calculate_keyword_similarity,
-    description="Calculate similarity between two keyword strings"
-)
+def batch_classify_topics(topics_list, api_key=None, batch_size=10):
+    """
+    Classify multiple topics in batches to optimize API usage
+    Args:
+        topics_list: list of topic keywords/labels
+        api_key: OpenAI API key
+        batch_size: number of topics to process in each batch
+    Returns:
+        dict: mapping of topic to category
+    """
+    topic_to_category = {}
+    
+    # Process in batches
+    for i in range(0, len(topics_list), batch_size):
+        batch = topics_list[i:i + batch_size]
+        print(f"  Classifying batch {i//batch_size + 1}/{(len(topics_list) + batch_size - 1)//batch_size} ({len(batch)} topics)")
+        
+        for topic in batch:
+            category = classify_topic_category(topic, api_key)
+            topic_to_category[topic] = category
+    
+    return topic_to_category
 
-topic_matching_tool = Tool.from_function(
-    name="TopicMatching",
-    func=lambda df1, df2, threshold=0.6: advanced_topic_matching(df1, df2, threshold),
-    description="Match topics between platforms using similarity and LLM"
-)
+def add_category_column(final_results_filepath, api_key=None):
+    """
+    Add category column to final grouped results
+    Args:
+        final_results_filepath: path to final grouped results CSV
+        api_key: OpenAI API key
+    Returns:
+        filepath: path to updated CSV with category column
+    """
+    print(f"Step 9: Adding category classification to {final_results_filepath}")
+    
+    # Load final results
+    df = pd.read_csv(final_results_filepath)
+    
+    # Get unique topic names (group_name column)
+    unique_topics = df['group_name'].unique().tolist()
+    print(f"  Found {len(unique_topics)} unique topics to classify")
+    
+    # Classify all unique topics
+    topic_to_category = batch_classify_topics(unique_topics, api_key)
+    
+    # Add category column to dataframe
+    df['category'] = df['group_name'].map(topic_to_category)
+    
+    # Fill any missing categories with default
+    df['category'] = df['category'].fillna("Entertainment & Media")
+    
+    # Save updated results
+    output_filepath = final_results_filepath.replace('.csv', '_with_categories.csv')
+    df.to_csv(output_filepath, index=False)
+    
+    print(f"  ✓ Category classification completed")
+    print(f"  ✓ Updated results saved to: {output_filepath}")
+    
+    # Print category distribution
+    category_counts = df['category'].value_counts()
+    print(f"\n  Category Distribution:")
+    for category, count in category_counts.items():
+        print(f"    {category}: {count} topics")
+    
+    return output_filepath
+
+def save_categorized_results(df, media_type='equal', workflow_timestamp=None, output_filename=None):
+    """
+    Save final results with category classification to CSV file
+    Args:
+        df: DataFrame with category column added
+        media_type: content type for filename ('equal', 'video', 'text', 'image')
+        workflow_timestamp: timestamp for consistent file naming
+        output_filename: optional filename, will auto-generate if None
+    Returns:
+        filepath of saved CSV
+    """
+    if output_filename is None:
+        if workflow_timestamp:
+            if media_type == 'equal':
+                output_filename = f"final_grouped_trend_scores_with_categories_{workflow_timestamp}.csv"
+            else:
+                output_filename = f"final_grouped_trend_scores_with_categories_{media_type}_{workflow_timestamp}.csv"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+            if media_type == 'equal':
+                output_filename = f"final_grouped_trend_scores_with_categories_{timestamp}.csv"
+            else:
+                output_filename = f"final_grouped_trend_scores_with_categories_{media_type}_{timestamp}.csv"
+    
+    # Create output directory
+    output_dir = "Output"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, output_filename)
+    
+    # Save to CSV
+    df.to_csv(filepath, index=False)
+    print(f"Final categorized results exported to '{filepath}'")
+    print(f"Total records: {len(df)}")
+    
+    return filepath
+
+# STEP 10: Media Type Specific Final Score Calculation
+def calculate_final_scores_by_media_type(categorized_results_filepath, media_type, workflow_timestamp):
+    """
+    Calculate final scores for specific media type using the categorized results
+    Args:
+        categorized_results_filepath: path to categorized results CSV
+        media_type: media type for weight calculation
+        workflow_timestamp: timestamp for file naming
+    Returns:
+        filepath: path to final media-type specific results
+    """
+    print(f"Step 10: Calculating final scores for {media_type} media type")
+    
+    # Load categorized results
+    df = pd.read_csv(categorized_results_filepath)
+    
+    # Get platform weights for this media type
+    platform_weights = get_platform_weights(media_type)
+    
+    # Recalculate S_p scores with media-specific weights
+    df['platform_weight'] = df['platform'].map(platform_weights).fillna(0)
+    df['S_p'] = df['platform_weight'] * (
+        0.4 * df['frequency_norm'] + 0.4 * df['engagement_norm']
+    )
+    
+    # Recalculate final trend score (S_p + cross_platform_bonus)
+    df['final_trend_score'] = df['S_p'] + df['cross_platform_bonus']
+    
+    # Save media-type specific results
+    if media_type == 'equal':
+        output_filename = f"final_categorized_scores_{workflow_timestamp}.csv"
+    else:
+        output_filename = f"final_categorized_scores_{media_type}_{workflow_timestamp}.csv"
+    
+    output_dir = "Output"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, output_filename)
+    
+    df.to_csv(filepath, index=False)
+    print(f"  ✓ Final {media_type} scores saved to: {filepath}")
+    
+    return filepath
+
+# Main workflow function that includes grouping
+def run_complete_workflow_with_grouping(media_type='video', alpha=0.4, beta=0.4, 
+                                       lambda_val=0.1, similarity_threshold=0.8,
+                                       api_key=None, workflow_timestamp=None):
+    """
+    Run the complete workflow including topic grouping
+    Args:
+        media_type: content type for weight selection
+        alpha: weight for frequency
+        beta: weight for engagement
+        lambda_val: lambda value for platform boost calculation
+        similarity_threshold: threshold for considering topics similar
+        api_key: OpenAI API key for LLM features
+        workflow_timestamp: timestamp for output filenames
+    Returns:
+        dict with all results including grouped topics
+    """
+    print("Starting complete workflow with topic grouping...")
+    
+    # Step 1: Collect data from all platforms
+    print("\n=== Step 1: Collecting data from platforms ===")
+    platform_data = {}
+    
+    try:
+        platform_data['youtube'] = fetch_youtube_popular()
+        print("✓ YouTube data collected")
+    except Exception as e:
+        print(f"✗ YouTube data collection failed: {e}")
+        platform_data['youtube'] = None
+    
+    try:
+        platform_data['reddit'] = fetch_reddit_hot()
+        print("✓ Reddit data collected")
+    except Exception as e:
+        print(f"✗ Reddit data collection failed: {e}")
+        platform_data['reddit'] = None
+    
+    try:
+        platform_data['tiktok'] = fetch_tiktok_hashtags()
+        print("✓ TikTok data collected")
+    except Exception as e:
+        print(f"✗ TikTok data collection failed: {e}")
+        platform_data['tiktok'] = None
+    
+    try:
+        platform_data['twitter'] = fetch_twitter_trends()
+        print("✓ Twitter data collected")
+    except Exception as e:
+        print(f"✗ Twitter data collection failed: {e}")
+        platform_data['twitter'] = None
+    
+    try:
+        platform_data['google_trends'] = fetch_google_trends()
+        print("✓ Google Trends data collected")
+    except Exception as e:
+        print(f"✗ Google Trends data collection failed: {e}")
+        platform_data['google_trends'] = None
+    
+    # Step 2: Preprocess data
+    print("\n=== Step 2: Preprocessing data ===")
+    preprocessed_data = preprocess_platform_data(platform_data)
+    print("✓ Data preprocessing completed")
+    
+    # Step 3: LDA Topic Modeling for YouTube and Reddit
+    print("\n=== Step 3: LDA Topic Modeling for YouTube and Reddit ===")
+    
+    # Process YouTube data if available
+    if preprocessed_data.get('youtube') is not None:
+        print("3.1: Preprocessing YouTube text data...")
+        youtube_df = preprocessed_data['youtube']
+        youtube_texts = preprocess_text(youtube_df, ['Title', 'Description'])
+        print(f"✓ Preprocessed {len(youtube_texts)} YouTube documents")
+        
+        print("3.2: Performing LDA topic modeling on YouTube data...")
+        youtube_topics, youtube_model, youtube_labels, youtube_keywords, youtube_keywords_str = topic_modeling(youtube_texts)
+        print(f"✓ Extracted {len(youtube_labels)} topics from YouTube data")
+        
+        print("3.3: Labeling YouTube topics with LLM...")
+        youtube_topic_counts = [youtube_topics.count(i) for i in range(len(youtube_keywords_str))]
+        youtube_llm_labels = label_topics_with_llm(youtube_keywords_str, youtube_topic_counts, api_key)
+        print(f"✓ LLM labeled {len(youtube_llm_labels)} YouTube topics")
+        
+        # Create YouTube topic DataFrame
+        youtube_topic_df = create_topic_dataframe(youtube_topics, youtube_llm_labels, youtube_keywords_str, youtube_df, 'youtube')
+        preprocessed_data['youtube'] = youtube_topic_df
+        print(f"✓ Created YouTube topic DataFrame with {len(youtube_topic_df)} topics")
+    else:
+        print("✗ YouTube data not available for topic modeling")
+    
+    # Process Reddit data if available
+    if preprocessed_data.get('reddit') is not None:
+        print("3.1: Preprocessing Reddit text data...")
+        reddit_df = preprocessed_data['reddit']
+        reddit_texts = preprocess_text(reddit_df, ['title', 'selftext'])
+        print(f"✓ Preprocessed {len(reddit_texts)} Reddit documents")
+        
+        print("3.2: Performing LDA topic modeling on Reddit data...")
+        reddit_topics, reddit_model, reddit_labels, reddit_keywords, reddit_keywords_str = topic_modeling(reddit_texts)
+        print(f"✓ Extracted {len(reddit_labels)} topics from Reddit data")
+        
+        print("3.3: Labeling Reddit topics with LLM...")
+        reddit_topic_counts = [reddit_topics.count(i) for i in range(len(reddit_keywords_str))]
+        reddit_llm_labels = label_topics_with_llm(reddit_keywords_str, reddit_topic_counts, api_key)
+        print(f"✓ LLM labeled {len(reddit_llm_labels)} Reddit topics")
+        
+        # Create Reddit topic DataFrame
+        reddit_topic_df = create_topic_dataframe(reddit_topics, reddit_llm_labels, reddit_keywords_str, reddit_df, 'reddit')
+        preprocessed_data['reddit'] = reddit_topic_df
+        print(f"✓ Created Reddit topic DataFrame with {len(reddit_topic_df)} topics")
+    else:
+        print("✗ Reddit data not available for topic modeling")
+    
+    print("✓ LDA Topic Modeling completed for YouTube and Reddit")
+    
+    # Step 4: Consolidate platform data
+    print("\n=== Step 4: Consolidating platform data ===")
+    consolidated_df = consolidate_platform_data(preprocessed_data)
+    print(f"✓ Consolidated {len(consolidated_df)} records from all platforms")
+    
+    # Step 5: Apply min-max scaling
+    print("\n=== Step 5: Applying min-max scaling ===")
+    scaled_df = apply_minmax_scaling(consolidated_df)
+    print("✓ Min-max scaling completed")
+    
+    # Step 6: Calculate trend scores and save consolidated results (before cross-platform bonus)
+    print("\nStep 6: Calculating trend scores...")
+    df_with_scores, final_scores = calculate_trend_scores(scaled_df, media_type, alpha, beta)
+    consolidated_file = save_consolidated_scores(df_with_scores, media_type, workflow_timestamp)
+    print(f"✓ Consolidated scores saved to {consolidated_file}")
+    
+    # Step 7: Cluster similar topics and save consolidated results with cross-platform bonus
+    print("\n=== Step 7: Clustering similar topics ===")
+    clustered_results, final_df = cluster_similar_topics(consolidated_file, lambda_val, similarity_threshold)
+    print(f"✓ Clustered {len(clustered_results)} topic groups")
+    consolidated_w_crossbonus_file = save_final_trend_scores(final_df, media_type, workflow_timestamp)
+    print(f"✓ Consolidated scores with cross bonus saved to {consolidated_w_crossbonus_file}")
+    
+    # Step 8: Generate final grouped output
+    print("\n=== Step 8: Generating final output ===")
+    final_output_results = generate_final_output(clustered_results, media_type, workflow_timestamp)
+    print("✓ Final output generated successfully")
+    
+    # Step 9: Add category classification
+    print("\n=== Step 9: Adding category classification ===")
+    categorized_results_filepath = add_category_column(final_output_results['filepath'], api_key)
+    print(f"✓ Category classification added to {categorized_results_filepath}")
+    
+    # Step 10: Calculate media-type specific final scores
+    print("\n=== Step 10: Calculating media-type specific final scores ===")
+    final_scores_by_media_type_filepath = calculate_final_scores_by_media_type(categorized_results_filepath, media_type, workflow_timestamp)
+    print(f"✓ Media-type specific final scores saved to {final_scores_by_media_type_filepath}")
+    
+    return {
+        'consolidated_data': df_with_scores,
+        'final_scores': final_scores,
+        'clustered_results': clustered_results,
+        'final_df': final_df,
+        'consolidated_file': consolidated_file,
+        'consolidated_w_crossbonus_file': consolidated_w_crossbonus_file,
+        'final_output': final_output_results,
+        'categorized_results_filepath': categorized_results_filepath,
+        'final_scores_by_media_type_filepath': final_scores_by_media_type_filepath
+    }
+
+# Example usage (Use all kinds of media types)
+if __name__ == "__main__":
+    # Load environment variables
+    load_dotenv()
+    
+    # Get API key for LLM operations
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        print("Warning: OPENAI_API_KEY not found in environment variables")
+    
+    # Define media types to process
+    media_types = ['equal', 'video', 'text', 'image']
+    
+    print("=" * 60)
+    print("OPTIMIZED LANGCHAIN WORKFLOW EXECUTION")
+    print("=" * 60)
+    
+    # Generate consistent timestamp for all files in this workflow run
+    workflow_timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+    print(f"Workflow timestamp: {workflow_timestamp}")
+    
+    # STEP 1-5: Run once for all media types (common processing)
+    print("\n" + "=" * 40)
+    print("STEPS 1-5: COMMON PROCESSING (RUNNING ONCE)")
+    print("=" * 40)
+    
+    try:
+        # Step 1: Fetch latest data from all platforms
+        print("\nStep 1: Fetching latest data from all platforms...")
+        youtube_df = fetch_youtube_popular()
+        reddit_df = fetch_reddit_hot()
+        tiktok_df = fetch_tiktok_hashtags()
+        twitter_df = fetch_twitter_trends()
+        google_trends_df = fetch_google_trends()
+        
+        platform_data = {
+            'youtube': youtube_df,
+            'reddit': reddit_df,
+            'tiktok': tiktok_df,
+            'twitter': twitter_df,
+            'google_trends': google_trends_df
+        }
+        print("✓ Data collection completed")
+        
+        # Step 1.5: Preprocess all platform data
+        print("\nStep 1.5: Preprocessing all platform data...")
+        preprocessed_data = preprocess_platform_data(platform_data)
+        print("✓ Data preprocessing completed")
+        
+        # Step 2: LDA Preprocessing (NLTK initialization)
+        print("\nStep 2: Initializing NLTK components for LDA...")
+        stop_words, lemmatizer = initialize_nltk_components()
+        print("✓ NLTK components initialized")
+        
+        # Step 3: LDA Topic Modeling for YouTube and Reddit
+        print("\nStep 3: LDA Topic Modeling and LLM Labeling...")
+        
+        # Process YouTube data
+        if preprocessed_data.get('youtube') is not None:
+            print("  - Processing YouTube data...")
+            youtube_texts = preprocess_text(youtube_df, ['Title', 'Description'])
+            youtube_topics, youtube_model, youtube_labels, youtube_keywords, youtube_keywords_str = topic_modeling(youtube_texts)
+            youtube_topic_counts = [youtube_topics.count(i) for i in range(len(youtube_keywords_str))]
+            youtube_llm_labels = label_topics_with_llm(youtube_keywords_str, youtube_topic_counts, api_key)
+            preprocessed_data['youtube'] = create_topic_dataframe(youtube_topics, youtube_llm_labels, youtube_keywords_str, youtube_df, 'youtube')
+            print(f"  ✓ YouTube: {len(youtube_topics)} topics processed")
+        
+        # Process Reddit data
+        if preprocessed_data.get('reddit') is not None:
+            print("  - Processing Reddit data...")
+            reddit_texts = preprocess_text(reddit_df, ['title', 'selftext'])
+            reddit_topics, reddit_model, reddit_labels, reddit_keywords, reddit_keywords_str = topic_modeling(reddit_texts)
+            reddit_topic_counts = [reddit_topics.count(i) for i in range(len(reddit_keywords_str))]
+            reddit_llm_labels = label_topics_with_llm(reddit_keywords_str, reddit_topic_counts, api_key)
+            preprocessed_data['reddit'] = create_topic_dataframe(reddit_topics, reddit_llm_labels, reddit_keywords_str, reddit_df, 'reddit')
+            print(f"  ✓ Reddit: {len(reddit_topics)} topics processed")
+        
+        print("✓ LDA Topic Modeling and LLM Labeling completed")
+        
+        # Step 4: Extract platform metrics
+        print("\nStep 4: Extracting platform metrics...")
+        all_metrics = []
+        for platform, df in preprocessed_data.items():
+            if df is not None and not df.empty:
+                metrics = extract_platform_metrics(df, platform)
+                all_metrics.extend(metrics)
+        print("✓ Platform metrics extraction completed")
+        
+        # Step 5: Consolidate and normalize data
+        print("\nStep 5: Consolidating and normalizing data...")
+        consolidated_df = consolidate_platform_data(preprocessed_data)
+        normalized_df = apply_minmax_scaling(consolidated_df)
+        print("✓ Data consolidation and normalization completed")
+        
+        print("\n" + "=" * 40)
+        print("COMMON PROCESSING COMPLETED")
+        print("=" * 40)
+        
+        # STEPS 6-8: Run for each media type
+        print("\n" + "=" * 40)
+        print("STEPS 6-8: MEDIA TYPE SPECIFIC PROCESSING")
+        print("=" * 40)
+        
+        for media_type in media_types:
+            print(f"\n--- Processing {media_type.upper()} media type ---")
+            
+            try:
+                # Step 6: Calculate trend scores with media-specific weights
+                print(f"  Step 6: Calculating trend scores for {media_type}...")
+                df_with_scores, final_scores = calculate_trend_scores(normalized_df, media_type)
+                
+                # Save Step 6 results
+                step6_filepath = save_consolidated_scores(df_with_scores, media_type, workflow_timestamp)
+                print(f"  ✓ Step 6 results saved: {step6_filepath}")
+                
+                # Step 7: Topic clustering and cross-platform bonus
+                print(f"  Step 7: Clustering similar topics for {media_type}...")
+                clustered_results, final_df = cluster_similar_topics(step6_filepath)
+                
+                # Save Step 7 results
+                step7_filepath = save_final_trend_scores(final_df, media_type, workflow_timestamp)
+                print(f"  ✓ Step 7 results saved: {step7_filepath}")
+                
+                # Step 8: Generate final grouped output
+                print(f"  Step 8: Generating final grouped output for {media_type}...")
+                step8_filepath = generate_final_output(clustered_results, media_type, workflow_timestamp)
+                print(f"  ✓ Step 8 results saved: {step8_filepath}")
+                
+                # Step 9: Add category classification
+                print(f"  Step 9: Adding category classification for {media_type}...")
+                step9_filepath = add_category_column(step8_filepath, api_key)
+                print(f"  ✓ Step 9 results saved: {step9_filepath}")
+                
+                # Step 10: Calculate media-type specific final scores
+                print(f"  Step 10: Calculating media-type specific final scores for {media_type}...")
+                step10_filepath = calculate_final_scores_by_media_type(step9_filepath, media_type, workflow_timestamp)
+                print(f"  ✓ Step 10 results saved: {step10_filepath}")
+                
+                print(f"  ✓ {media_type.upper()} processing completed successfully")
+                
+            except Exception as e:
+                print(f"  ✗ Error processing {media_type}: {str(e)}")
+                continue
+        
+        print("\n" + "=" * 60)
+        print("WORKFLOW EXECUTION COMPLETED")
+        print("=" * 60)
+        print(f"Generated files for {len(media_types)} media types")
+        print(f"All files use consistent timestamp: {workflow_timestamp}")
+        
+    except Exception as e:
+        print(f"\n✗ Workflow execution failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
