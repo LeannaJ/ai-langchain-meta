@@ -11,7 +11,6 @@ import pandas as pd
 import numpy as np
 import glob
 import os
-from metrics_trending_score import calculate_youtube_metrics, calculate_reddit_metrics, calculate_reddit_proxy_metrics
 import re
 import nltk
 from nltk.corpus import stopwords
