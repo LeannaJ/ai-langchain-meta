@@ -87,3 +87,9 @@ cd 4_web_dashboard && npm install && npm start
 ### Notes
 - Large binary deliverables are kept in `final_deliverables/` and linked above for browsing
 - If you plan to store large media, consider using Git LFS
+
+### Demo
+<video src="final_deliverables/web-dashboard-demo.mp4" controls width="720">
+  Your browser does not support the video tag. You can download the video
+  <a href="final_deliverables/web-dashboard-demo.mp4">here</a>.
+</video>
