@@ -75,7 +75,11 @@ python 1_data_collection/google_trend_agent.py
 ```
 python 2_trend_detection/final_langchain/final_main_execution.py
 ```
-4) Web dashboard
+4) Content generation (optional)
+```
+python 3_content_generation/caption_agent.py --topic "Your Topic"
+```
+5) Web dashboard
 ```
 cd 4_web_dashboard && npm install && npm start
 ```
