@@ -1,4 +1,4 @@
-## ai-langchain-meta
+## AI-LangChain-Meta
 
 Agentic AI pipeline for trend detection and content generation, with a React web dashboard and automated GitHub Actions workflows.
 
@@ -93,3 +93,9 @@ cd 4_web_dashboard && npm install && npm start
   Your browser does not support the video tag. You can download the video
   <a href="final_deliverables/web-dashboard-demo.mp4">here</a>.
 </video>
+
+If the embedded player does not appear in your view, use the link or thumbnail below:
+
+- [Watch the dashboard demo (MP4)](final_deliverables/web-dashboard-demo.mp4)
+
+[![Open demo video](4_web_dashboard/public/Dashboard_Example.jpeg)](final_deliverables/web-dashboard-demo.mp4)
