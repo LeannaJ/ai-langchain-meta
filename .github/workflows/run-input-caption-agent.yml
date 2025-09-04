@@ -28,12 +28,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt  # Assumes requirements.txt has abacusai
       
-      - name: Run Caption Agent
+      - name: Run CaptionGen Workflow
         env:
           ABACUSAPIKEY: ${{ secrets.ABACUSAPIKEY }}  # Your API key secret
         run: |
           # Pass the input topic to the script (update caption_agent.py if needed to accept args)
-          python caption_agent.py --topic "${{ github.event.inputs.topic || 'default_topic' }}"
+          python 3_content_generation/caption_agent.py --topic "${{ github.event.inputs.topic || 'default_topic' }}"
       
       - name: Archive Output (Optional)
         if: always()

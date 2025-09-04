@@ -22,10 +22,10 @@ jobs:
         python -m playwright install
 
     - name: 🔍 Run Trends24 scraper
-      run: python "Trends 24 Collector for GITHUB.py"
+      run: python 1_data_collection/trend24_collector_github.py
 
     - name: 📹 Run TikTok scraper
-      run: python "TikTok Fetch for GITHUB.py"
+      run: python 1_data_collection/tiktok_fetch_github.py
 
     - name: 📤 Upload results
       uses: actions/upload-artifact@v4

@@ -26,12 +26,12 @@ jobs:
       - name: Install Playwright browsers
         run: python -m playwright install
 
-      - name: Run TikTok Script
+      - name: Run TikTok Script Collection
         env:
-          GEMINI_API_KEY: "AIzaSyA-mjFzthre_maHmacY51JK4TXF0tJ0evQ"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -eux
-          python "TikTok Script with LLM support.py"
+          python "1_data_collection/tiktok_script_llm_support.py"
           
       - name: Upload debug artifacts
         uses: actions/upload-artifact@v4

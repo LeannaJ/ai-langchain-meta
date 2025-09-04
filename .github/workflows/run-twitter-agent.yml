@@ -25,8 +25,8 @@ jobs:
       - name: Ensure CSV file exists
         run: touch trends_output.csv
 
-      - name: Run Twitter Agent
-        run: python twitter_agent.py
+      - name: Run Twitter Collection
+        run: python 1_data_collection/twitter_agent.py
 
       - name: Upload CSV
         uses: actions/upload-artifact@v4

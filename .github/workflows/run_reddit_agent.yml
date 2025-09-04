@@ -28,12 +28,12 @@ jobs:
     - name: Install dependencies
       run: pip install requests pandas
 
-    - name: Fetch 1 000 Reddit posts
+    - name: Run Reddit Collection
       env:
         REDDIT_CLIENT_ID:     ${{ secrets.REDDIT_CLIENT_ID }}
         REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
         REDDIT_USER_AGENT:    ${{ secrets.REDDIT_USER_AGENT }}
-      run: python reddit_agent.py
+      run: python 1_data_collection/reddit_agent.py
 
     - name: Upload CSV artifact
       uses: actions/upload-artifact@v4

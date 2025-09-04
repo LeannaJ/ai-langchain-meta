@@ -1,0 +1,20 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', 'Noto Sans KR', 'Roboto', Arial, sans-serif;
+  background: #181A20;
+  color: #F7F9FB;
+}
+
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* 기존 불필요한 스타일 제거 */
+.App-logo, .App-header, .App-link {
+  display: none;
+}

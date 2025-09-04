@@ -31,8 +31,8 @@ jobs:
         echo "GOOGLE_APPLICATION_CREDENTIALS=$PWD/key.json" >> $GITHUB_ENV
 
     # 5 – run the bot (writes CSVs)
-    - name: Run trend bot
-      run: python trend_bot.py
+    - name: Run Google Trend Collection
+      run: python 1_data_collection/google_trend_agent.py
 
     # 6 – list whatever was created (never fails)
     - name: List generated CSV

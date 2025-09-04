@@ -1,0 +1,46 @@
+name: Run Content Generation
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Topic to generate content for"
+        required: true
+        type: string
+
+jobs:
+  contentgen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: 🛎️  Checkout repo
+      uses: actions/checkout@v4
+
+    - name: 🐍  Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: 📦  Install deps
+      run: |
+        pip install --upgrade pip
+        pip install abacusai python-dotenv requests
+
+    - name: 🚀  Run ContentGen Workflow
+      env:
+        ABACUSAPIKEY : ${{ secrets.ABACUSAPIKEY  }}
+        DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        DEPLOYMENT_ID   : ${{ secrets.DEPLOYMENT_ID   }}
+      run: |
+        python 3_content_generation/content_gen_agent.py --topic "${{ github.event.inputs.topic }}"
+
+    - name: 🗂️  Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: contentgen-${{ github.run_number }}
+        path: |
+          *.md
+          *.json
+          *.png
+        if-no-files-found: error      # fail the run if nothing was captured
+        retention-days: 30
