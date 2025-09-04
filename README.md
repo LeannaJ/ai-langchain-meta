@@ -98,4 +98,4 @@ If the embedded player does not appear in your view, use the link or thumbnail b
 
 - [Watch the dashboard demo (MP4)](final_deliverables/web-dashboard-demo.mp4)
 
-[![Open demo video](4_web_dashboard/public/Dashboard_Example)](final_deliverables/web-dashboard-demo.mp4)
+[![Open demo video](4_web_dashboard/public/Dashboard_Example.png)](final_deliverables/web-dashboard-demo.mp4)
