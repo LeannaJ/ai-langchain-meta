@@ -90,7 +90,7 @@ cd 4_web_dashboard && npm install && npm start
 
 ### Demo
 
-**Live Demo**: [https://web-dashboard-astra.vercel.app/trend-strategy](https://web-dashboard-astra.vercel.app/trend-strategy)
+**Live Demo**: [https://web-dashboard-astra.vercel.app](https://web-dashboard-astra.vercel.app/trend-strategy)
 
 <video src="final_deliverables/web-dashboard-demo.mp4" controls width="720">
   Your browser does not support the video tag. You can download the video
